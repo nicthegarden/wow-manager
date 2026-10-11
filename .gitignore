@@ -4,3 +4,10 @@ servers.json
 
 __pycache__/
 *.pyc
+
+# PyInstaller / AppImage build outputs — shipped via GitHub Releases, not git.
+build/
+dist/
+WoWManager.AppDir/
+squashfs-root/
+*.spec

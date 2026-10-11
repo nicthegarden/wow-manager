@@ -39,7 +39,24 @@ What you're looking at, top to bottom:
 - **Tk app (legacy fallback):** `python3-tk`
 - `wine` to actually run `WoW.exe`, `xdg-open` for "Open folder", `pgrep` for extra-program detection
 
-## Quick start
+## Download (recommended)
+
+Get the latest build from [GitHub Releases](https://github.com/nicthegarden/wow-manager/releases) — no Python setup needed:
+
+| File | What it is |
+|---|---|
+| `WoWRealmlistManager-*-x86_64.AppImage` | Double-clickable app (recommended). `chmod +x` then run. |
+| `wow-manager-*-x86_64` | Plain GTK binary, run from a terminal. |
+| `wow-manager-tk-*-x86_64` | Legacy Tk fallback, fully self-contained. |
+
+The GTK binary and AppImage need system GTK4 with introspection (present on virtually all modern desktops):
+```bash
+# Debian / Ubuntu (only if the app fails to start with a Gtk typelib error)
+sudo apt install gir1.2-gtk-4.0
+```
+Plus `wine` to actually launch `WoW.exe`.
+
+## Quick start (from source)
 
 ```bash
 git clone https://github.com/nicthegarden/wow-manager.git
