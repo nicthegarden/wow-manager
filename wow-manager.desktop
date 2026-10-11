@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=WoW Realmlist Manager
+Comment=Manage WoW private server realmlists on Linux
+Exec=bash -c 'cd "$(dirname "%k")" && ./run.sh'
+Type=Application
+Categories=Game;
+Terminal=false

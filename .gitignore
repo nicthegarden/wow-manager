@@ -1,0 +1,6 @@
+# Local user config — created automatically on first run.
+# Never commit personal server lists or WoW paths.
+servers.json
+
+__pycache__/
+*.pyc

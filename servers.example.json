@@ -1,0 +1,58 @@
+{
+  "servers": [
+    {
+      "name": "CHROMIECRAFT",
+      "address": "logon.chromiecraft.com",
+      "own_patchlist": false,
+      "patchlist": "",
+      "uses_preloader": false,
+      "preloader": "",
+      "alt_wow": false,
+      "wow_path": "",
+      "auto_clear": false,
+      "server_type": "3.3.5a",
+      "rss": "",
+      "site": "https://chromiecraft.com",
+      "info": ""
+    },
+    {
+      "name": "Warmane",
+      "address": "logon.warmane.com",
+      "own_patchlist": false,
+      "patchlist": "",
+      "uses_preloader": false,
+      "preloader": "",
+      "alt_wow": false,
+      "wow_path": "",
+      "auto_clear": false,
+      "server_type": "3.3.5a",
+      "rss": "",
+      "site": "https://warmane.com",
+      "info": ""
+    },
+    {
+      "name": "Example",
+      "address": "logon.example.com",
+      "own_patchlist": false,
+      "patchlist": "",
+      "uses_preloader": false,
+      "preloader": "",
+      "alt_wow": false,
+      "wow_path": "",
+      "auto_clear": false,
+      "server_type": "3.3.5a",
+      "rss": "",
+      "site": "",
+      "info": ""
+    }
+  ],
+  "settings": {
+    "wow_exe": "",
+    "run_extra": false,
+    "extra_path": "",
+    "extra_skip_if_running": false,
+    "timeout_ms": 3000,
+    "save_window_pos": true,
+    "check_updates": "Once a day"
+  }
+}
