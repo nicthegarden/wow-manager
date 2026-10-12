@@ -822,6 +822,7 @@ class ServerDialog(Gtk.Dialog):
         self.add_buttons("Add" if server is None else "Save", Gtk.ResponseType.OK, "Cancel", Gtk.ResponseType.CANCEL)
         s = server or {}
         self._clients = [dict(c) for c in (clients or [])]
+        self._orig_client = (s.get("client") or "").strip()
         self.client_names = ["Default (first client)"] + [c.get("name", "") for c in (clients or []) if c.get("name")]
         nb = Gtk.Notebook()
         nb.set_margin_top(8); nb.set_margin_bottom(8); nb.set_margin_start(8); nb.set_margin_end(8)
@@ -962,7 +963,10 @@ class ServerDialog(Gtk.Dialog):
     def result(self):
         opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
         sel = self.e_client.get_selected()
-        client = "" if sel == 0 else self.client_names[sel]
+        if sel == 0 and self._orig_client and self._orig_client not in self.client_names:
+            client = self._orig_client  # dangling ref: don't silently drop it
+        else:
+            client = "" if sel == 0 else self.client_names[sel]
         return {
             "name": self.e_name.get_text().strip(),
             "address": self.e_addr.get_text().strip(),
