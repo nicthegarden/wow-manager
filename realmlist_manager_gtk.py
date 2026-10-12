@@ -23,11 +23,10 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "2.1.0"
+APP_VERSION = "4.0.0"
 
 DEFAULT_SETTINGS = {
-    "wow_exe": "",  # legacy default client: resolved at runtime
-    "clients": [],  # [{"name","version","path","launcher","wineprefix","args"}]
+    "profiles": {"1.12.1": "", "2.4.3": "", "3.3.5a": ""},
     "default_launcher": "wine",
     "default_wineprefix": "",
     "default_args": "",
@@ -40,26 +39,40 @@ DEFAULT_SETTINGS = {
     "check_updates": "Once a day",
 }
 
-# Well-known install locations probed on first run / when client list is empty.
+# Probed on first run / Autodetect to pre-fill empty profile slots.
+KNOWN_PROFILE_PATHS = {
+    "1.12.1": ["/mnt/hdd/Wow - VANILLA/WoW.exe"],
+    "2.4.3": ["/mnt/hdd/Wow - TBC/WoW.exe"],
+    "3.3.5a": ["/mnt/hdd/Wow - WOTLK/WoW.exe"],
+}
 KNOWN_CLIENT_PATHS = [
     ("/mnt/hdd/Wow - VANILLA/WoW.exe", "1.12.1"),
     ("/mnt/hdd/Wow - TBC/WoW.exe", "2.4.3"),
     ("/mnt/hdd/Wow - WOTLK/Wow.exe", "3.3.5a"),
 ]
 
+# Three fixed client profiles. Each version maps to exactly one WoW.exe path.
+PROFILE_VERSIONS = ["1.12.1", "2.4.3", "3.3.5a"]
+
+PROFILE_LABELS = {
+    "1.12.1": "1.12.1 (Vanilla)",
+    "2.4.3": "2.4.3 (TBC)",
+    "3.3.5a": "3.3.5a (WotLK)",
+}
+
 DEFAULT_SERVERS = [
-    {"name": "CHROMIECRAFT", "address": "logon.chromiecraft.com",
+    {"name": "OctoWoW", "address": "play.octowow.st",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
-     "server_type": "3.3.5a", "rss": "", "site": "https://chromiecraft.com", "info": ""},
+     "windowed": False, "auto_clear": False,
+     "server_type": "1.12.1", "rss": "", "site": "https://octowow.st", "info": ""},
+    {"name": "FrozenThrone", "address": "frozenthrone.co",
+     "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
+     "windowed": False, "auto_clear": False,
+     "server_type": "3.3.5a", "rss": "", "site": "https://frozenthrone.co", "info": ""},
     {"name": "Warmane", "address": "logon.warmane.com",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
+     "windowed": False, "auto_clear": False,
      "server_type": "3.3.5a", "rss": "", "site": "https://warmane.com", "info": ""},
-    {"name": "Example", "address": "logon.example.com",
-     "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
-     "server_type": "3.3.5a", "rss": "", "site": "", "info": ""},
 ]
 
 CSS = """
@@ -97,16 +110,14 @@ def load_data():
             d = json.loads(CONFIG_FILE.read_text())
             servers = d.get("servers", DEFAULT_SERVERS)
             settings = {**DEFAULT_SETTINGS, **d.get("settings", {})}
-            if not isinstance(settings.get("clients"), list):
-                settings["clients"] = []
-            if not Path(settings.get("wow_exe", "")).exists():
-                nearby = autodetect_wow_exe()
-                if nearby:
-                    settings["wow_exe"] = nearby
-            _ensure_clients(servers, settings)
+            settings["profiles"] = dict(settings.get("profiles") or {})
+            if isinstance(d.get("profiles"), dict):
+                for v in PROFILE_VERSIONS:
+                    if not (settings["profiles"].get(v) or "").strip() and d["profiles"].get(v):
+                        settings["profiles"][v] = d["profiles"][v]
+            _ensure_profiles(servers, settings)
             # fill missing per-server keys for forward compat
             for s in servers:
-                s.setdefault("client", "")
                 s.setdefault("windowed", False)
             save_data(servers, settings)
             return servers, settings
@@ -116,16 +127,8 @@ def load_data():
     # preferring a WoW.exe found in the same folder
     servers = [dict(s) for s in DEFAULT_SERVERS]
     settings = dict(DEFAULT_SETTINGS)
-    settings["clients"] = []
-    nearby = autodetect_wow_exe()
-    if nearby:
-        settings["wow_exe"] = nearby
-    elif not Path(settings["wow_exe"]).exists():
-        pass  # keep default; user picks it via Settings
-    for s in servers:
-        s.setdefault("client", "")
-        s.setdefault("windowed", False)
-    _ensure_clients(servers, settings)
+    settings["profiles"] = dict(DEFAULT_SETTINGS["profiles"])
+    _ensure_profiles(servers, settings)
     try:
         save_data(servers, settings)
     except Exception:
@@ -133,95 +136,97 @@ def load_data():
     return servers, settings
 
 
-def _ensure_clients(servers, settings):
-    """Migrate legacy paths into the clients list and autodetect known installs.
+def _ensure_profiles(servers, settings):
+    """Fill the 3 fixed profile slots and migrate legacy configs.
 
-    - Legacy global wow_exe -> client "Default" (if no client with same path).
-    - Legacy per-server alt_wow/wow_path -> client named after the server.
-    - Probe KNOWN_CLIENT_PATHS (VANILLA/TBC/WOTLK) so a fresh install just works.
-    Does not overwrite an explicitly configured non-empty clients list,
-    except for adding missing autodetected entries.
+    Migration sources (only fill empty slots, never overwrite):
+    - old settings["profiles"] values are kept as-is (unknown versions dropped)
+    - old settings["clients"] [{name, version, path}] -> profiles[version]
+    - old settings["wow_exe"] -> guessed version slot, else first empty slot
+    - old per-server alt_wow/wow_path -> that server's server_type slot
+    - KNOWN_PROFILE_PATHS probe + WoW.exe next to the script
     """
-    clients = settings.get("clients") or []
+    profiles = settings.get("profiles")
+    if not isinstance(profiles, dict):
+        profiles = {}
+    for v in PROFILE_VERSIONS:
+        profiles.setdefault(v, "")
+    for v in [key for key in profiles if key not in PROFILE_VERSIONS]:
+        del profiles[v]
+    settings["profiles"] = profiles
     for k in ("default_launcher", "default_wineprefix", "default_args", "default_windowed"):
         settings.setdefault(k, DEFAULT_SETTINGS[k])
-    have_paths = {c.get("path") for c in clients if c.get("path")}
 
-    def add_client(name, version, path):
-        if not path or path in have_paths:
-            return
-        if not Path(path).is_file():
-            return
-        base = name
-        i = 2
-        existing = {c.get("name") for c in clients}
-        while base in existing:
-            base = f"{name} {i}"
-            i += 1
-        clients.append({"name": base, "version": version or "...", "path": path,
-                        "launcher": "", "wineprefix": "", "args": ""})
-        have_paths.add(path)
-        existing.add(base)
+    def guess_version(path):
+        p = str(path or "").upper()
+        if "VANILLA" in p:
+            return "1.12.1"
+        if "WOTLK" in p:
+            return "3.3.5a"
+        if "TBC" in p:
+            return "2.4.3"
+        return ""
 
-    # 1. legacy global exe
-    wexe = (settings.get("wow_exe") or "").strip()
-    if wexe and Path(wexe).is_file():
-        add_client("Default", _guess_version(wexe), wexe)
-    # 2. legacy per-server overrides
-    for s in servers:
-        if s.get("alt_wow") and (s.get("wow_path") or "").strip():
-            p = s["wow_path"].strip()
-            if Path(p).is_file():
-                add_client(s.get("name", "Client"),
-                           s.get("server_type", "..."), p)
-                # point the server at the new client, keep wow_path as fallback
-                for c in clients:
-                    if c.get("path") == p:
-                        s["client"] = c["name"]
+    def fill(version, path):
+        if not path:
+            return
+        if version not in PROFILE_VERSIONS:
+            return
+        if (profiles.get(version) or "").strip():
+            return
+        if Path(path).is_file():
+            profiles[version] = path
+
+    raw = settings.pop("clients", None)
+    if isinstance(raw, list):
+        for c in raw:
+            if isinstance(c, dict):
+                fill((c.get("version") or "").strip(), (c.get("path") or "").strip())
+    old_exe = (settings.pop("wow_exe", "") or "").strip()
+    if old_exe:
+        fill(guess_version(old_exe) or "3.3.5a", old_exe)
+    for s in servers if isinstance(servers, list) else []:
+        if isinstance(s, dict) and s.get("alt_wow") and (s.get("wow_path") or "").strip():
+            fill((s.get("server_type") or "").strip(), s["wow_path"].strip())
+    for ver, paths in KNOWN_PROFILE_PATHS.items():
+        for p in paths:
+            if not (profiles.get(ver) or "").strip() and Path(p).is_file():
+                profiles[ver] = p
+                break
+    nearby = autodetect_wow_exe()
+    if nearby:
+        taken = {p for p in profiles.values() if p}
+        if nearby not in taken:
+            for s in servers if isinstance(servers, list) else []:
+                st = (s.get("server_type") or "").strip() if isinstance(s, dict) else ""
+                if st in PROFILE_VERSIONS and not (profiles.get(st) or "").strip():
+                    profiles[st] = nearby
+                    break
+            else:
+                for v in PROFILE_VERSIONS:
+                    if not (profiles.get(v) or "").strip():
+                        profiles[v] = nearby
                         break
-    # 3. known install locations (only fills gaps)
-    for path, ver in KNOWN_CLIENT_PATHS:
-        if "VANILLA" in path:
-            label = "Vanilla 1.12"
-        elif "WOTLK" in path:
-            label = "WotLK 3.3.5"
-        elif "TBC" in path:
-            label = "TBC 2.4.3"
-        else:
-            label = Path(path).parent.name
-        add_client(label, ver, path)
-    # 3b. forward-compat: every client gets launcher/wineprefix/args keys
-    for c in clients:
-        c.setdefault("launcher", "")
-        c.setdefault("wineprefix", "")
-        c.setdefault("args", "")
-    # 4. auto-assign servers with no explicit client by matching server_type
-    for s in servers:
-        if not (s.get("client") or "").strip() and not (s.get("alt_wow") and s.get("wow_path")):
-            stype = (s.get("server_type") or "").strip()
-            if stype and stype != "...":
-                for c in clients:
-                    if c.get("version") == stype and Path(c.get("path", "")).is_file():
-                        s["client"] = c["name"]
-                        break
-    settings["clients"] = clients
+    for s in servers if isinstance(servers, list) else []:
+        if isinstance(s, dict) and (s.get("server_type") or "").strip() not in PROFILE_VERSIONS:
+            s["server_type"] = "3.3.5a"
+    settings["profiles"] = profiles
 
 
 def _guess_version(path):
-    p = str(path)
-    if "VANILLA" in p.upper():
+    p = str(path or "").upper()
+    if "VANILLA" in p:
         return "1.12.1"
-    if "WOTLK" in p.upper() or "WOTLK" in p:
+    if "WOTLK" in p:
         return "3.3.5a"
-    if "TBC" in p.upper():
+    if "TBC" in p:
         return "2.4.3"
-    return "..."
+    return ""
 
 
 def get_client_by_name(settings, name):
-    for c in settings.get("clients", []):
-        if c.get("name") == name:
-            return c
+    # Backwards-compat shim: old code looked up clients by name.
+    # The simplified model has no named clients; return None.
     return None
 
 
@@ -243,60 +248,35 @@ def ping_realm(host, port=3724, timeout_ms=3000):
         return False, None
 
 
-def effective_wow_exe(server, settings):
-    """Resolve which WoW.exe to use for a server.
+def server_version(server):
+    """Which of the 3 profiles a server needs (defaults to 3.3.5a)."""
+    v = ((server or {}).get("server_type") or "").strip()
+    return v if v in PROFILE_VERSIONS else "3.3.5a"
 
-    Priority: explicit custom path (alt_wow) > named client > legacy global wow_exe.
-    """
-    if server is not None:
-        if server.get("alt_wow") and (server.get("wow_path") or "").strip():
-            return server["wow_path"]
-        cname = (server.get("client") or "").strip()
-        if cname:
-            c = get_client_by_name(settings, cname)
-            if c and c.get("path"):
-                return c["path"]
-            # client was renamed/deleted: fall through to default
-        # no explicit client -> first client acts as default when global exe is unset
-        if not (settings.get("wow_exe") or "").strip():
-            clients = settings.get("clients", [])
-            if clients and clients[0].get("path"):
-                return clients[0]["path"]
-    return settings["wow_exe"]
+
+def profile_exe(version, settings):
+    """WoW.exe path programmed for a profile version ('' if unset)."""
+    try:
+        return ((settings or {}).get("profiles", {}) or {}).get(version, "") or ""
+    except Exception:
+        return ""
+
+
+def effective_wow_exe(server, settings):
+    """Resolve which WoW.exe to use: profiles[server_type]."""
+    return profile_exe(server_version(server), settings)
 
 
 def effective_client(server, settings):
-    """Return the client dict for a server, or None for legacy/custom paths."""
-    if server is None:
-        return None
-    if server.get("alt_wow") and (server.get("wow_path") or "").strip():
-        return None
-    cname = (server.get("client") or "").strip()
-    if cname:
-        return get_client_by_name(settings, cname)
-    clients = settings.get("clients", [])
-    if not (settings.get("wow_exe") or "").strip() and clients:
-        return clients[0]
+    # Backwards-compat shim: no per-server client objects any more.
     return None
 
 
 def effective_launch(server, settings):
-    """Resolve (launcher, wineprefix, args) for a server.
-
-    Per-client fields win; empty client fields fall back to the global defaults.
-    Returns e.g. ("wine", "", "").
-    """
-    launcher = (settings.get("default_launcher") or "wine").strip() or "wine"
-    wineprefix = (settings.get("default_wineprefix") or "").strip()
-    args = (settings.get("default_args") or "").strip()
-    c = effective_client(server, settings)
-    if c:
-        if (c.get("launcher") or "").strip():
-            launcher = c["launcher"].strip()
-        if (c.get("wineprefix") or "").strip():
-            wineprefix = c["wineprefix"].strip()
-        if (c.get("args") or "").strip():
-            args = c["args"].strip()
+    """Resolve (launcher, wineprefix, args) from the global defaults."""
+    launcher = ((settings or {}).get("default_launcher") or "wine").strip() or "wine"
+    wineprefix = ((settings or {}).get("default_wineprefix") or "").strip()
+    args = ((settings or {}).get("default_args") or "").strip()
     return launcher, wineprefix, args
 
 
@@ -324,19 +304,15 @@ def describe_launch(server, settings):
 
 
 def describe_client(server, settings):
-    """Short label for the details pane, e.g. 'Vanilla 1.12 (1.12.1)'."""
-    if server.get("alt_wow") and server.get("wow_path"):
-        return f"Custom: {Path(server['wow_path']).parent.name}"
-    cname = (server.get("client") or "").strip()
-    if cname:
-        c = get_client_by_name(settings, cname)
-        if c:
-            return f"{c['name']} ({c.get('version', '...')})"
-        return f"{cname} (missing!)"
-    clients = settings.get("clients", [])
-    if clients:
-        return f"Default ({clients[0]['name']})"
-    return "No"
+    """Short label, e.g. '3.3.5a (WotLK): /path/WoW.exe' or '3.3.5a (not set)'."""
+    v = server_version(server)
+    label = PROFILE_LABELS.get(v, v)
+    exe = profile_exe(v, settings)
+    if exe and Path(exe).is_file():
+        return f"{label}"
+    if exe:
+        return f"{label} (missing!)"
+    return f"{label} (not set)"
 
 
 def wow_dir_of(wow_exe_path):
@@ -541,12 +517,15 @@ def kill_pid(pid, force=False):
 
 
 class SettingsDialog(Gtk.Dialog):
+    """Settings: 3 fixed WoW profiles (one WoW.exe per version) + launch defaults."""
     def __init__(self, parent, settings):
         super().__init__(title="Settings", transient_for=parent, modal=True)
-        self.set_default_size(560, 600)
+        self.set_default_size(560, 520)
         self.settings = settings
         self.add_buttons("Save", Gtk.ResponseType.OK, "Cancel", Gtk.ResponseType.CANCEL)
-        self.clients = [dict(c) for c in settings.get("clients", [])]
+        profiles = dict((settings.get("profiles") or {}))
+        for v in PROFILE_VERSIONS:
+            profiles.setdefault(v, "")
         outer = Gtk.ScrolledWindow(hexpand=True, vexpand=True)
         outer.set_min_content_height(400)
         self.get_content_area().append(outer)
@@ -554,75 +533,37 @@ class SettingsDialog(Gtk.Dialog):
         g.set_margin_top(10); g.set_margin_bottom(10); g.set_margin_start(10); g.set_margin_end(10)
         outer.set_child(g)
 
-        g.attach(Gtk.Label(label="Default WoW.exe (legacy fallback):", halign=Gtk.Align.START), 0, 0, 1, 1)
-        self.wow_entry = Gtk.Entry(hexpand=True)
-        self.wow_entry.set_text(settings.get("wow_exe", ""))
-        g.attach(self.wow_entry, 0, 1, 1, 1)
-        hb = Gtk.Box(spacing=6)
-        b_search = Gtk.Button(label="Search...")
-        b_search.connect("clicked", lambda *a: self.pick_file(self.wow_entry))
-        b_ver = Gtk.Button(label="Obtain version")
-        b_ver.connect("clicked", lambda *a: self.show_version(self.wow_entry.get_text()))
-        b_loc = Gtk.Button(label="Locate realmlist")
-        b_loc.connect("clicked", lambda *a: self.show_located(self.wow_entry.get_text()))
-        hb.append(b_search); hb.append(b_ver); hb.append(b_loc)
-        g.attach(hb, 1, 1, 1, 1)
-
-        g.attach(Gtk.Label(label="WoW clients (1.12.1 / 2.4.3 / 3.3.5a — each with its own launcher):", halign=Gtk.Align.START), 0, 2, 2, 1)
-        self.client_list = Gtk.ListBox()
-        self.client_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
-        self.client_list.connect("row-selected", lambda *a: self.load_selected_client())
-        g.attach(self.client_list, 0, 3, 2, 1)
-
-        addgrid = Gtk.Grid(column_spacing=6, row_spacing=6)
-        g.attach(addgrid, 0, 4, 2, 1)
-        addgrid.attach(Gtk.Label(label="Name:", halign=Gtk.Align.START), 0, 0, 1, 1)
-        self.nc_name = Gtk.Entry(hexpand=True, placeholder_text="e.g. Vanilla 1.12")
-        addgrid.attach(self.nc_name, 1, 0, 1, 1)
-        addgrid.attach(Gtk.Label(label="Version:", halign=Gtk.Align.START), 0, 1, 1, 1)
-        self.nc_ver = Gtk.DropDown.new_from_strings(["...", "1.12.1", "2.4.3", "3.3.5a"])
-        addgrid.attach(self.nc_ver, 1, 1, 1, 1)
-        addgrid.attach(Gtk.Label(label="WoW.exe path:", halign=Gtk.Align.START), 0, 2, 1, 1)
-        hb3 = Gtk.Box(spacing=6, hexpand=True)
-        self.nc_path = Gtk.Entry(hexpand=True, placeholder_text="/mnt/hdd/Wow - VANILLA/WoW.exe")
-        b_nc = Gtk.Button(label="Search...")
-        b_nc.connect("clicked", lambda *a: self.pick_file(self.nc_path))
-        hb3.append(self.nc_path); hb3.append(b_nc)
-        addgrid.attach(hb3, 1, 2, 1, 1)
-        addgrid.attach(Gtk.Label(label="Launcher (blank = default):", halign=Gtk.Align.START), 0, 3, 1, 1)
-        hb4 = Gtk.Box(spacing=6, hexpand=True)
-        self.nc_launcher = Gtk.Entry(hexpand=True, placeholder_text="e.g. wine, gamemoderun wine, /path/to/wow-launcher.sh")
-        b_ncl = Gtk.Button(label="Search...")
-        b_ncl.connect("clicked", lambda *a: self.pick_file(self.nc_launcher))
-        hb4.append(self.nc_launcher); hb4.append(b_ncl)
-        addgrid.attach(hb4, 1, 3, 1, 1)
-        addgrid.attach(Gtk.Label(label="WINEPREFIX (blank = default):", halign=Gtk.Align.START), 0, 4, 1, 1)
-        self.nc_prefix = Gtk.Entry(hexpand=True, placeholder_text="e.g. ~/.wine-vanilla")
-        addgrid.attach(self.nc_prefix, 1, 4, 1, 1)
-        addgrid.attach(Gtk.Label(label="Extra args (blank = default):", halign=Gtk.Align.START), 0, 5, 1, 1)
-        self.nc_args = Gtk.Entry(hexpand=True, placeholder_text="e.g. -opengl")
-        addgrid.attach(self.nc_args, 1, 5, 1, 1)
-        brow = Gtk.Box(spacing=6)
-        b_add = Gtk.Button(label="Add client")
-        b_add.connect("clicked", lambda *a: self.add_client())
-        b_save = Gtk.Button(label="Save to selected")
-        b_save.set_tooltip_text("Write the fields above into the selected client")
-        b_save.connect("clicked", lambda *a: self.save_to_selected())
-        b_del = Gtk.Button(label="Remove selected")
-        b_del.connect("clicked", lambda *a: self.del_client())
+        g.attach(Gtk.Label(label="WoW clients: one WoW.exe per version.", halign=Gtk.Align.START), 0, 0, 2, 1)
+        note0 = Gtk.Label(label="Pick the WoW.exe for each version you play. Play uses the profile matching the server's version.")
+        note0.set_wrap(True)
+        g.attach(note0, 0, 1, 2, 1)
+        self.profile_entries = {}
+        row = 2
+        for v in PROFILE_VERSIONS:
+            g.attach(Gtk.Label(label=f"{PROFILE_LABELS.get(v, v)}:", halign=Gtk.Align.START), 0, row, 1, 1)
+            hb = Gtk.Box(spacing=6, hexpand=True)
+            entry = Gtk.Entry(hexpand=True, placeholder_text=".../WoW.exe")
+            entry.set_text(profiles.get(v, ""))
+            ok = Path(entry.get_text()).is_file() if entry.get_text().strip() else False
+            entry.set_tooltip_text("OK" if ok else "Not set - pick WoW.exe")
+            b_search = Gtk.Button(label="Search...")
+            b_search.connect("clicked", lambda *a, e=entry: self.pick_file(e))
+            b_loc = Gtk.Button(label="Locate realmlist")
+            b_loc.connect("clicked", lambda *a, e=entry: self.show_located(e.get_text()))
+            hb.append(entry); hb.append(b_search); hb.append(b_loc)
+            g.attach(hb, 1, row, 1, 1)
+            self.profile_entries[v] = entry
+            row += 1
         b_auto = Gtk.Button(label="Autodetect")
-        b_auto.set_tooltip_text("Probe /mnt/hdd/Wow - VANILLA, Wow - TBC and Wow - WOTLK")
+        b_auto.set_tooltip_text("Probe standard install locations for empty slots")
         b_auto.connect("clicked", lambda *a: self.autodetect())
-        b_locate = Gtk.Button(label="Locate realmlist")
-        b_locate.set_tooltip_text("Show which realmlist.wtf file(s) the selected client will update")
-        b_locate.connect("clicked", lambda *a: self.show_located_client())
-        brow.append(b_add); brow.append(b_save); brow.append(b_del); brow.append(b_auto)
-        brow.append(b_locate)
-        g.attach(brow, 0, 5, 2, 1)
+        g.attach(b_auto, 0, row, 2, 1)
+        row += 1
 
-        g.attach(Gtk.Label(label="Default launcher (used when a client leaves its launcher blank):", halign=Gtk.Align.START), 0, 6, 2, 1)
+        g.attach(Gtk.Label(label="Launcher (used for all profiles):", halign=Gtk.Align.START), 0, row, 2, 1)
+        row += 1
         defgrid = Gtk.Grid(column_spacing=6, row_spacing=6)
-        g.attach(defgrid, 0, 7, 2, 1)
+        g.attach(defgrid, 0, row, 2, 1)
         defgrid.attach(Gtk.Label(label="Launcher:", halign=Gtk.Align.START), 0, 0, 1, 1)
         self.def_launcher = Gtk.Entry(hexpand=True, placeholder_text="wine")
         self.def_launcher.set_text(settings.get("default_launcher", "wine"))
@@ -638,192 +579,76 @@ class SettingsDialog(Gtk.Dialog):
         self.def_windowed = Gtk.CheckButton(label="Start windowed by default (SET gxWindow on Play)")
         self.def_windowed.set_active(settings.get("default_windowed", False))
         defgrid.attach(self.def_windowed, 0, 3, 2, 1)
+        row += 1
 
         self.run_extra = Gtk.CheckButton(label="Run another program together with WoW")
-        self.run_extra.set_active(settings["run_extra"])
-        g.attach(self.run_extra, 0, 8, 2, 1)
+        self.run_extra.set_active(settings.get("run_extra", False))
+        g.attach(self.run_extra, 0, row, 2, 1)
+        row += 1
         self.skip_run = Gtk.CheckButton(label="Do not run, if it's already running")
-        self.skip_run.set_active(settings["extra_skip_if_running"])
-        g.attach(self.skip_run, 0, 9, 2, 1)
+        self.skip_run.set_active(settings.get("extra_skip_if_running", False))
+        g.attach(self.skip_run, 0, row, 2, 1)
+        row += 1
         self.extra_entry = Gtk.Entry(hexpand=True)
-        self.extra_entry.set_text(settings["extra_path"])
-        g.attach(self.extra_entry, 0, 10, 1, 1)
+        self.extra_entry.set_text(settings.get("extra_path", ""))
+        g.attach(self.extra_entry, 0, row, 1, 1)
         b_search2 = Gtk.Button(label="Search...")
         b_search2.connect("clicked", lambda *a: self.pick_file(self.extra_entry))
-        g.attach(b_search2, 1, 10, 1, 1)
+        g.attach(b_search2, 1, row, 1, 1)
+        row += 1
 
-        g.attach(Gtk.Label(label="Connection timeout (milliseconds):", halign=Gtk.Align.START), 0, 11, 1, 1)
+        g.attach(Gtk.Label(label="Connection timeout (milliseconds):", halign=Gtk.Align.START), 0, row, 1, 1)
         self.timeout = Gtk.SpinButton.new_with_range(500, 15000, 500)
-        self.timeout.set_value(settings["timeout_ms"])
-        g.attach(self.timeout, 1, 11, 1, 1)
+        self.timeout.set_value(settings.get("timeout_ms", 3000))
+        g.attach(self.timeout, 1, row, 1, 1)
+        row += 1
 
         self.save_pos = Gtk.CheckButton(label="Save window position")
-        self.save_pos.set_active(settings["save_window_pos"])
-        g.attach(self.save_pos, 0, 12, 2, 1)
+        self.save_pos.set_active(settings.get("save_window_pos", True))
+        g.attach(self.save_pos, 0, row, 2, 1)
+        row += 1
 
-        g.attach(Gtk.Label(label="Check program updates automatically:", halign=Gtk.Align.START), 0, 13, 1, 1)
+        g.attach(Gtk.Label(label="Check program updates automatically:", halign=Gtk.Align.START), 0, row, 1, 1)
         self.upd = Gtk.DropDown.new_from_strings(["Never", "Once a day", "Once a week"])
         try:
-            self.upd.set_selected(["Never", "Once a day", "Once a week"].index(settings["check_updates"]))
+            self.upd.set_selected(["Never", "Once a day", "Once a week"].index(settings.get("check_updates", "Once a day")))
         except ValueError:
             self.upd.set_selected(1)
-        g.attach(self.upd, 1, 13, 1, 1)
-
-        note = Gtk.Label(label="Note: per-server client choice wins; custom alt path wins over everything; default exe is the last fallback.")
-        note.set_wrap(True)
-        g.attach(note, 0, 14, 2, 1)
-
-        self.refresh_client_list()
+        g.attach(self.upd, 1, row, 1, 1)
 
     def pick_file(self, entry):
-        d = Gtk.FileChooserDialog(title="Select file", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        d = Gtk.FileChooserDialog(title="Select WoW.exe", transient_for=self, action=Gtk.FileChooserAction.OPEN)
         d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Open", Gtk.ResponseType.ACCEPT)
         d.connect("response", lambda dlg, r: (entry.set_text(dlg.get_file().get_path()) if r == Gtk.ResponseType.ACCEPT and dlg.get_file() else None, dlg.close()))
         d.present()
 
-    def show_version(self, path):
-        p = Path(path)
-        msg = f"File exists: {p}\nSize: {p.stat().st_size} bytes" if p.exists() else f"Not found:\n{path}"
-        m = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
-        m.connect("response", lambda *a: m.close())
-        m.present()
-
     def show_located(self, path, title="realmlist.wtf file(s) that Play will update:"):
         files = locate_realmlists(path)
         if not files:
-            msg = "No WoW path set — pick WoW.exe first."
+            msg = "No WoW path set - pick WoW.exe first."
         else:
             existing = [str(p) for p in files if p.exists()]
             msg = title + "\n" + (
-                "\n".join(existing) if existing else f"(none found yet — will create {files[0]})")
+                "\n".join(existing) if existing else f"(none found yet - will create {files[0]})")
         m2 = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
         m2.connect("response", lambda *a: m2.close())
         m2.present()
 
-    def show_located_client(self):
-        idx = self._selected_client_idx()
-        if idx is not None:
-            c = self.clients[idx]
-            self.show_located(c.get("path", ""),
-                              f"realmlist.wtf file(s) for client '{c.get('name')}' that Play will update:")
-        else:
-            path = self.nc_path.get_text().strip()
-            if not path:
-                return
-            self.show_located(path, "realmlist.wtf file(s) that Play will update:")
-
-    def refresh_client_list(self):
-        while (row := self.client_list.get_row_at_index(0)) is not None:
-            self.client_list.remove(row)
-        if not self.clients:
-            row = Gtk.ListBoxRow()
-            row.set_child(Gtk.Label(label="(no clients — Add one or Autodetect)", halign=Gtk.Align.START))
-            row.set_selectable(False)
-            self.client_list.append(row)
-            return
-        for c in self.clients:
-            row = Gtk.ListBoxRow()
-            ok = Path(c.get("path", "")).is_file()
-            dot = "● " if ok else "○ "
-            launcher = (c.get("launcher") or "").strip() or "(default launcher)"
-            lbl = Gtk.Label(label=f"{dot}{c.get('name')} [{c.get('version', '...')}] — {c.get('path')} — via {launcher}",
-                            halign=Gtk.Align.START, hexpand=True)
-            lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
-            row.set_child(lbl)
-            row.set_tooltip_text("○ = path missing. Select to edit launcher fields above, then Save to selected.")
-            self.client_list.append(row)
-
-    def _selected_client_idx(self):
-        row = self.client_list.get_selected_row()
-        if row is None or not self.clients:
-            return None
-        idx = row.get_index()
-        return idx if 0 <= idx < len(self.clients) else None
-
-    def load_selected_client(self):
-        idx = self._selected_client_idx()
-        if idx is None:
-            return
-        c = self.clients[idx]
-        self.nc_name.set_text(c.get("name", ""))
-        ver_opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
-        try:
-            self.nc_ver.set_selected(ver_opts.index(c.get("version", "...")))
-        except ValueError:
-            self.nc_ver.set_selected(0)
-        self.nc_path.set_text(c.get("path", ""))
-        self.nc_launcher.set_text(c.get("launcher", ""))
-        self.nc_prefix.set_text(c.get("wineprefix", ""))
-        self.nc_args.set_text(c.get("args", ""))
-
-    def save_to_selected(self):
-        idx = self._selected_client_idx()
-        if idx is None:
-            return
-        c = self.clients[idx]
-        name = self.nc_name.get_text().strip()
-        if name and name != c.get("name") and any(o.get("name") == name for o in self.clients):
-            return  # duplicate name
-        ver_opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
-        if name:
-            c["name"] = name
-        c["version"] = ver_opts[self.nc_ver.get_selected()]
-        path = self.nc_path.get_text().strip()
-        if path:
-            c["path"] = path
-        c["launcher"] = self.nc_launcher.get_text().strip()
-        c["wineprefix"] = self.nc_prefix.get_text().strip()
-        c["args"] = self.nc_args.get_text().strip()
-        self.refresh_client_list()
-
-    def add_client(self):
-        name = self.nc_name.get_text().strip()
-        path = self.nc_path.get_text().strip()
-        ver_opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
-        ver = ver_opts[self.nc_ver.get_selected()]
-        if not name or not path:
-            return
-        if any(c.get("name") == name for c in self.clients):
-            return
-        self.clients.append({"name": name, "version": ver, "path": path,
-                             "launcher": self.nc_launcher.get_text().strip(),
-                             "wineprefix": self.nc_prefix.get_text().strip(),
-                             "args": self.nc_args.get_text().strip()})
-        self.nc_name.set_text(""); self.nc_path.set_text("")
-        self.nc_launcher.set_text(""); self.nc_prefix.set_text(""); self.nc_args.set_text("")
-        self.refresh_client_list()
-
-    def del_client(self):
-        row = self.client_list.get_selected_row()
-        if row is None or not self.clients:
-            return
-        idx = row.get_index()
-        if 0 <= idx < len(self.clients):
-            self.clients.pop(idx)
-            self.refresh_client_list()
-
     def autodetect(self):
-        for path, ver in KNOWN_CLIENT_PATHS:
-            if Path(path).is_file() and not any(c.get("path") == path for c in self.clients):
-                if "VANILLA" in path:
-                    label = "Vanilla 1.12"
-                elif "WOTLK" in path:
-                    label = "WotLK 3.3.5"
-                elif "TBC" in path:
-                    label = "TBC 2.4.3"
-                else:
-                    label = Path(path).parent.name
-                base, i = label, 2
-                while any(c.get("name") == base for c in self.clients):
-                    base = f"{label} {i}"; i += 1
-                self.clients.append({"name": base, "version": ver, "path": path,
-                                     "launcher": "", "wineprefix": "", "args": ""})
-        self.refresh_client_list()
+        for ver, paths in KNOWN_PROFILE_PATHS.items():
+            entry = self.profile_entries.get(ver)
+            if entry is None:
+                continue
+            if entry.get_text().strip():
+                continue
+            for p in paths:
+                if Path(p).is_file():
+                    entry.set_text(p)
+                    break
 
     def result(self):
         return {
-            "wow_exe": self.wow_entry.get_text().strip(),
-            "clients": self.clients,
+            "profiles": {v: e.get_text().strip() for v, e in self.profile_entries.items()},
             "default_launcher": self.def_launcher.get_text().strip() or "wine",
             "default_wineprefix": self.def_prefix.get_text().strip(),
             "default_args": self.def_args.get_text().strip(),
@@ -838,14 +663,11 @@ class SettingsDialog(Gtk.Dialog):
 
 
 class ServerDialog(Gtk.Dialog):
-    """Add/Edit server with Basic + Additional tabs (like screenshots 2 and 3)."""
+    """Add/Edit server: name + address + which of the 3 profiles it needs."""
     def __init__(self, parent, server=None, clients=None):
         super().__init__(title="Add server" if server is None else "Edit server", transient_for=parent, modal=True)
         self.add_buttons("Add" if server is None else "Save", Gtk.ResponseType.OK, "Cancel", Gtk.ResponseType.CANCEL)
         s = server or {}
-        self._clients = [dict(c) for c in (clients or [])]
-        self._orig_client = (s.get("client") or "").strip()
-        self.client_names = ["Default (first client)"] + [c.get("name", "") for c in (clients or []) if c.get("name")]
         nb = Gtk.Notebook()
         nb.set_margin_top(8); nb.set_margin_bottom(8); nb.set_margin_start(8); nb.set_margin_end(8)
         self.get_content_area().append(nb)
@@ -863,6 +685,11 @@ class ServerDialog(Gtk.Dialog):
         basic.append(Gtk.Label(label="Account name (optional):"))
         self.e_acct = Gtk.Entry(); self.e_acct.set_text(s.get("account", ""))
         basic.append(self.e_acct)
+        basic.append(Gtk.Label(label="Client version (picks one of the 3 profiles):"))
+        self.e_type = Gtk.DropDown.new_from_strings(PROFILE_VERSIONS)
+        cur = (s.get("server_type") or "").strip()
+        self.e_type.set_selected(PROFILE_VERSIONS.index(cur) if cur in PROFILE_VERSIONS else 2)
+        basic.append(self.e_type)
 
         # Additional tab
         adv = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -884,37 +711,6 @@ class ServerDialog(Gtk.Dialog):
         hb.append(self.e_pre); hb.append(b_pre)
         adv.append(hb)
 
-        self.c_alt = Gtk.CheckButton(label="Alternative WoW path (custom override, wins over client choice)")
-        self.c_alt.set_active(s.get("alt_wow", False))
-        adv.append(self.c_alt)
-        hb2 = Gtk.Box(spacing=6)
-        self.e_alt = Gtk.Entry(hexpand=True); self.e_alt.set_text(s.get("wow_path", ""))
-        b_ver = Gtk.Button(label="Obtain version")
-        b_ver.connect("clicked", lambda *a: self.version(self.e_alt.get_text()))
-        b_alt = Gtk.Button(label="Search...")
-        b_alt.connect("clicked", lambda *a: self.pick(self.e_alt))
-        hb2.append(self.e_alt); hb2.append(b_ver); hb2.append(b_alt)
-        adv.append(hb2)
-
-        adv.append(Gtk.Label(label="WoW client for this server:", halign=Gtk.Align.START))
-        self.e_client = Gtk.DropDown.new_from_strings(self.client_names)
-        cur_client = (s.get("client") or "").strip()
-        if cur_client and cur_client in self.client_names:
-            self.e_client.set_selected(self.client_names.index(cur_client))
-        elif cur_client:
-            # dangling reference (client renamed/deleted): keep Default selected
-            # but remember the value so Save doesn't silently drop it
-            self.e_client.set_selected(0)
-        else:
-            self.e_client.set_selected(0)
-        hb_client = Gtk.Box(spacing=6)
-        hb_client.append(self.e_client)
-        b_locate_client = Gtk.Button(label="Locate realmlist")
-        b_locate_client.set_tooltip_text("Show which realmlist.wtf file(s) Play will update for this server")
-        b_locate_client.connect("clicked", lambda *a: self.locate_client())
-        hb_client.append(b_locate_client)
-        adv.append(hb_client)
-
         self.c_cache = Gtk.CheckButton(label="Automatic cache (WDB) clearing")
         self.c_cache.set_active(s.get("auto_clear", False))
         adv.append(self.c_cache)
@@ -925,25 +721,19 @@ class ServerDialog(Gtk.Dialog):
 
         grid = Gtk.Grid(column_spacing=6, row_spacing=6)
         adv.append(grid)
-        grid.attach(Gtk.Label(label="Server type:", halign=Gtk.Align.START), 0, 0, 1, 1)
-        self.e_type = Gtk.DropDown.new_from_strings(["...", "1.12.1", "2.4.3", "3.3.5a"])
-        cur = s.get("server_type", "...")
-        opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
-        self.e_type.set_selected(opts.index(cur) if cur in opts else 0)
-        grid.attach(self.e_type, 1, 0, 1, 1)
-        grid.attach(Gtk.Label(label="Server RSS channel:", halign=Gtk.Align.START), 0, 1, 1, 1)
+        grid.attach(Gtk.Label(label="Server RSS channel:", halign=Gtk.Align.START), 0, 0, 1, 1)
         self.e_rss = Gtk.Entry(hexpand=True); self.e_rss.set_text(s.get("rss", ""))
-        grid.attach(self.e_rss, 1, 1, 1, 1)
-        grid.attach(Gtk.Label(label="Server site:", halign=Gtk.Align.START), 0, 2, 1, 1)
+        grid.attach(self.e_rss, 1, 0, 1, 1)
+        grid.attach(Gtk.Label(label="Server site:", halign=Gtk.Align.START), 0, 1, 1, 1)
         self.e_site = Gtk.Entry(hexpand=True); self.e_site.set_text(s.get("site", ""))
         b_visit = Gtk.Button(label="Visit")
         b_visit.connect("clicked", lambda *a: webbrowser.open(self.e_site.get_text()) if self.e_site.get_text() else None)
         hb3 = Gtk.Box(spacing=6)
         hb3.append(self.e_site); hb3.append(b_visit)
-        grid.attach(hb3, 1, 2, 1, 1)
-        grid.attach(Gtk.Label(label="Additional info:", halign=Gtk.Align.START), 0, 3, 1, 1)
+        grid.attach(hb3, 1, 1, 1, 1)
+        grid.attach(Gtk.Label(label="Additional info:", halign=Gtk.Align.START), 0, 2, 1, 1)
         self.e_info = Gtk.Entry(hexpand=True); self.e_info.set_text(s.get("info", ""))
-        grid.attach(self.e_info, 1, 3, 1, 1)
+        grid.attach(self.e_info, 1, 2, 1, 1)
 
     def pick(self, entry):
         d = Gtk.FileChooserDialog(title="Select file", transient_for=self, action=Gtk.FileChooserAction.OPEN)
@@ -951,48 +741,7 @@ class ServerDialog(Gtk.Dialog):
         d.connect("response", lambda dlg, r: (entry.set_text(dlg.get_file().get_path()) if r == Gtk.ResponseType.ACCEPT and dlg.get_file() else None, dlg.close()))
         d.present()
 
-    def version(self, path):
-        p = Path(path)
-        msg = f"File exists: {p}\nSize: {p.stat().st_size} bytes" if p.exists() else f"Not found:\n{path}"
-        m = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
-        m.connect("response", lambda *a: m.close())
-        m.present()
-
-    def resolved_exe(self):
-        """Preview of which WoW.exe Play would use with the current dialog values."""
-        if self.c_alt.get_active() and self.e_alt.get_text().strip():
-            return self.e_alt.get_text().strip(), "custom path"
-        sel = self.e_client.get_selected()
-        if sel > 0:
-            name = self.client_names[sel]
-            for c in self._clients:
-                if c.get("name") == name and c.get("path"):
-                    return c["path"], f"client '{name}'"
-            return "", f"client '{name}' (missing!)"
-        if self._clients and self._clients[0].get("path"):
-            return self._clients[0]["path"], f"default ({self._clients[0].get('name')})"
-        return "", "no client configured"
-
-    def locate_client(self):
-        exe, via = self.resolved_exe()
-        files = locate_realmlists(exe) if exe else []
-        if not files:
-            msg = f"No WoW path resolved ({via})."
-        else:
-            existing = [str(p) for p in files if p.exists()]
-            msg = (f"realmlist.wtf file(s) Play will update ({via}):\n" +
-                   ("\n".join(existing) if existing else f"(none found yet — will create {files[0]})"))
-        m2 = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
-        m2.connect("response", lambda *a: m2.close())
-        m2.present()
-
     def result(self):
-        opts = ["...", "1.12.1", "2.4.3", "3.3.5a"]
-        sel = self.e_client.get_selected()
-        if sel == 0 and self._orig_client and self._orig_client not in self.client_names:
-            client = self._orig_client  # dangling ref: don't silently drop it
-        else:
-            client = "" if sel == 0 else self.client_names[sel]
         return {
             "name": self.e_name.get_text().strip(),
             "address": self.e_addr.get_text().strip(),
@@ -1001,12 +750,9 @@ class ServerDialog(Gtk.Dialog):
             "patchlist": self.e_patch.get_text().strip(),
             "uses_preloader": self.c_pre.get_active(),
             "preloader": self.e_pre.get_text().strip(),
-            "alt_wow": self.c_alt.get_active(),
-            "wow_path": self.e_alt.get_text().strip(),
-            "client": client,
             "windowed": self.c_win.get_active(),
             "auto_clear": self.c_cache.get_active(),
-            "server_type": opts[self.e_type.get_selected()],
+            "server_type": PROFILE_VERSIONS[self.e_type.get_selected()],
             "rss": self.e_rss.get_text().strip(),
             "site": self.e_site.get_text().strip(),
             "info": self.e_info.get_text().strip(),
@@ -1298,8 +1044,8 @@ class App(Gtk.Application):
             h.append(name); h.append(dot)
             row.set_child(h)
             exe = effective_wow_exe(s, self.settings)
-            cname = (s.get("client") or "").strip() or "(default)"
-            row.set_tooltip_text(f"Client: {cname}\n{exe}\nDrag to reorder")
+            ver = server_version(s)
+            row.set_tooltip_text(f"Profile: {ver}\n{exe}\nDrag to reorder")
             # drag source: remember which row is being dragged
             ds = Gtk.DragSource.new()
             ds.set_actions(Gdk.DragAction.MOVE)
@@ -1353,11 +1099,6 @@ class App(Gtk.Application):
         self.detail_labels["realmlist"].set_text(addr)
         self.detail_labels["patchlist"].set_text(s.get("patchlist", "") if s.get("own_patchlist") else "---")
         client_lbl = describe_client(s, self.settings)
-        # flag version mismatch: e.g. 1.12.1 server on a 3.3.5a client
-        stype = (s.get("server_type") or "").strip()
-        c = get_client_by_name(self.settings, (s.get("client") or "").strip()) if (s.get("client") or "").strip() else None
-        if stype and stype != "..." and c and c.get("version") not in ("...", stype):
-            client_lbl += f"  ⚠ wants {stype}"
         self.detail_labels["altpath"].set_text(client_lbl)
         self.detail_labels["altpath"].set_tooltip_text(effective_wow_exe(s, self.settings) or "")
         self.detail_labels["launcher"].set_text(describe_launch(s, self.settings))
@@ -1393,7 +1134,7 @@ class App(Gtk.Application):
 
     # ---- actions ----
     def add_server(self, win):
-        dlg = ServerDialog(win, None, self.settings.get("clients", []))
+        dlg = ServerDialog(win, None)
         dlg.connect("response", lambda d, r: self._on_server_dlg(d, r, None))
         dlg.present()
 
@@ -1401,7 +1142,7 @@ class App(Gtk.Application):
         s = self.current()
         if not s:
             return
-        dlg = ServerDialog(win, s, self.settings.get("clients", []))
+        dlg = ServerDialog(win, s)
         dlg.connect("response", lambda d, r: self._on_server_dlg(d, r, s))
         dlg.present()
 
@@ -1437,12 +1178,12 @@ class App(Gtk.Application):
 
     def open_addons(self, win):
         s = self.current()
-        wow_exe = effective_wow_exe(s, self.settings) if s else self.settings.get("wow_exe", "")
+        wow_exe = effective_wow_exe(s, self.settings) if s else ""
         if not wow_exe or not Path(wow_exe).is_file():
             wow_exe = autodetect_wow_exe() or ""
         if not wow_exe:
             m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
-                                  text="No WoW.exe found.\n\nOpen Settings (⚙) to set the path.")
+                                  text="No WoW.exe found for this profile.\n\nOpen Settings and set the path.")
             m.connect("response", lambda *a: m.close())
             m.present()
             return
@@ -1463,7 +1204,7 @@ class App(Gtk.Application):
             return
         exe = effective_wow_exe(s, self.settings)
         files = locate_realmlists(exe) if exe else []
-        rl = "\n".join(str(p) for p in files[:4]) or "(no client)"
+        rl = "\n".join(str(p) for p in files[:4]) or "(profile not set)"
         text = (f"{s['name']}\nAddress: {s.get('address')}\nType: {s.get('server_type')}\n"
                 f"Client: {describe_client(s, self.settings)}\nExe: {exe}\nLaunch: {describe_launch(s, self.settings)}\n"
                 f"Windowed: {'Yes' if effective_windowed(s, self.settings) else 'No'}\nRealmlist files:\n{rl}\n"
@@ -1472,24 +1213,54 @@ class App(Gtk.Application):
         m.connect("response", lambda *a: m.close())
         m.present()
 
+    def ask_profile_path(self, win, server):
+        """Profile for this server's version is missing: let the user point at WoW.exe now.
+
+        Async (GTK dialogs): saves the profile when the user picks a file.
+        Always aborts the current Play - the user presses Play again afterwards.
+        """
+        ver = server_version(server)
+        msg = (f"No WoW.exe configured for {PROFILE_LABELS.get(ver, ver)}.\n\n"
+               f"Server '{server.get('name')}' needs a {ver} client.\n"
+               "Choose its WoW.exe now?")
+        q = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.QUESTION,
+                              buttons=Gtk.ButtonsType.OK_CANCEL, text=msg)
+
+        def on_answer(dlg, resp):
+            dlg.close()
+            if resp != Gtk.ResponseType.OK:
+                return
+            fc = Gtk.FileChooserDialog(title=f"Select WoW.exe for {ver}", transient_for=win,
+                                       action=Gtk.FileChooserAction.OPEN)
+            fc.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Open", Gtk.ResponseType.ACCEPT)
+
+            def on_file(fdlg, r):
+                if r == Gtk.ResponseType.ACCEPT and fdlg.get_file():
+                    p = fdlg.get_file().get_path()
+                    if p and Path(p).is_file():
+                        self.settings.setdefault("profiles", {})[ver] = p
+                        save_data(self.servers, self.settings)
+                        self.rebuild_list()
+                fdlg.close()
+            fc.connect("response", on_file)
+            fc.present()
+        q.connect("response", on_answer)
+        q.present()
+
     def play(self, win):
         s = self.current()
         if not s:
             return
         wow_exe = effective_wow_exe(s, self.settings)
         if not wow_exe or not Path(wow_exe).is_file():
-            # last resort: WoW.exe dropped next to the script
             nearby = autodetect_wow_exe()
             if nearby:
                 wow_exe = nearby
-                if not (s.get("alt_wow") and s.get("wow_path")):
-                    self.settings["wow_exe"] = nearby
-                    save_data(self.servers, self.settings)
+                self.settings.setdefault("profiles", {})[server_version(s)] = nearby
+                save_data(self.servers, self.settings)
+                self.rebuild_list()
         if not wow_exe or not Path(wow_exe).is_file():
-            m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
-                                  text=f"WoW.exe not found for client '{describe_client(s, self.settings)}':\n{wow_exe}\n\nOpen Settings (⚙) → WoW clients to fix the path.")
-            m.connect("response", lambda *a: m.close())
-            m.present()
+            self.ask_profile_path(win, s)
             return
         patch = s.get("patchlist", "") if s.get("own_patchlist") else ""
         ok, info = write_realmlist(wow_exe, s.get("address", ""), patch, s.get("account", ""),

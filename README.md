@@ -1,6 +1,17 @@
-# WoW Realmlist Manager — v2.1.0
+# WoW Realmlist Manager — v4.0.0
 
 A Linux clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client via Wine — without hand-editing config files.
+
+## What's new in 4.0.0
+
+- **Down to 3 profiles:** the `Forever` slot is removed — `1.12.1` / `2.4.3` / `3.3.5a` only. Existing configs migrate automatically (stale `Forever` keys are dropped, `Forever`-typed servers become `3.3.5a`).
+
+## What's new in 3.0.0
+
+- **Simplified to 3 fixed profiles:** `1.12.1` / `2.4.3` / `3.3.5a` — each holds exactly one `WoW.exe` path. No more free-form client list, no per-server overrides to get lost in. Adding 3.3.5a is now just Settings → paste the path → Save.
+- **Play prompts when a profile is missing:** if you start a server whose version has no `WoW.exe` configured, the app offers to pick the file right there and saves it to that profile.
+- **Default servers:** OctoWoW (`1.12.1`), FrozenThrone (`3.3.5a`), Warmane (`3.3.5a`).
+- Old configs migrate automatically (legacy `clients` / `wow_exe` / per-server paths are folded into the matching profile slot).
 
 ## What's new in 2.1.0
 
@@ -40,12 +51,12 @@ What you're looking at, top to bottom:
 ## Features
 
 - Server list with online/offline dot (TCP connect to port 3724) + ping in ms
-- One-click **Play**: writes every `realmlist.wtf`, patches `WTF/Config.wtf`, optionally clears `WDB`, launches via the client's launcher
-- Multi-client: named WoW installs per version (`1.12.1` / `2.4.3` / `3.3.5a`) in ⚙ Settings; each server picks a client from a dropdown (auto-assigned by `server_type` on first run). Each client has its own launcher, `WINEPREFIX` and extra args.
-- Per-client realmlist lookup: `Locate realmlist` in Settings (selected client) and in Add/Edit server shows exactly which `realmlist.wtf` file(s) Play will update
+- One-click **Play**: writes every `realmlist.wtf`, patches `WTF/Config.wtf`, optionally clears `WDB`, launches via wine. If the server's version has no `WoW.exe` configured, Play asks you to pick it and saves it to that profile.
+- 3 fixed profiles: one `WoW.exe` per version (`1.12.1` / `2.4.3` / `3.3.5a`) in Settings; each server picks a version, Play uses that profile's exe.
+- Per-profile realmlist lookup: `Locate realmlist` in Settings shows exactly which `realmlist.wtf` file(s) Play will update
 - Windowed-mode startup per server (`windowed`) with a global `default_windowed` fallback — writes `SET gxWindow "1"` on Play, never forces fullscreen
-- Add / edit / remove servers: Basic tab (name, address) + Additional tab (own patchlist, preloader, alternative WoW path, WoW client, windowed mode, auto cache clear, server type, RSS, site, info)
-- Global Settings: `WoW.exe` path (auto-detects `WoW.exe` next to the script), run-an-extra-program with WoW, connection timeout
+- Add / edit / remove servers: Basic tab (name, address, account, client version) + Additional tab (own patchlist, preloader, auto cache clear, windowed mode, RSS, site, info)
+- Global Settings: 3 WoW profiles (one `WoW.exe` per version), launcher / `WINEPREFIX` / args, run-an-extra-program with WoW, connection timeout
 - AddOns manager: enable/disable (`.disabled` rename), delete, install from `.zip` (zip-slip protected), open folder
 - Instance tracker: detached `Popen(start_new_session=True)` launches, liveness via `poll()`/`/proc`, SIGTERM/SIGKILL buttons
 - Drag-to-reorder server list, persisted to `servers.json`
@@ -101,8 +112,8 @@ cp servers.example.json servers.json
 
 ## Usage
 
-1. **Settings (⚙):** set your WoW clients once — one entry per install (e.g. Vanilla `1.12.1`, TBC `2.4.3`, WotLK `3.3.5a`), each with its own launcher / `WINEPREFIX` / args. If a `WoW.exe` sits next to the script it's picked up automatically. Use `Locate realmlist` to verify which files a client writes.
-2. **Add server (+):** name + address (e.g. `logon.example.com`). Use the Additional tab for patchlist / preloader / WoW client / windowed mode / per-server WoW path. `Locate realmlist` there previews the files Play will touch.
+1. **Settings:** set your 3 WoW profiles once — one `WoW.exe` per version (`1.12.1`, `2.4.3`, `3.3.5a`). Use `Locate realmlist` to verify which files a profile writes.
+2. **Add server (+):** name + address (e.g. `logon.example.com`) + client version (picks the profile). Use the Additional tab for patchlist / preloader / windowed mode / auto cache clear.
 3. **Select:** status, ping and the details grid update. `⟳` re-pings everything without blocking the UI.
 4. **Play (▶):** writes configs (see below) and launches with Wine. Use **AddOns** beforehand to set up mods.
 5. **Instances:** after Play, the PID appears under "Launched by manager". `Kill` / `Force kill` stops it.
@@ -112,11 +123,11 @@ cp servers.example.json servers.json
 ### Config (`servers.json`)
 
 - Location: same folder as the script (`APP_DIR / "servers.json"`).
-- Shape: `{"servers": [...], "settings": {...}}` — see `servers.example.json`.
-- First run: built from `DEFAULT_SERVERS` + `DEFAULT_SETTINGS`; if a `WoW.exe` is found next to the script (`autodetect_wow_exe()`, case-insensitive), it's stored as `settings.wow_exe`. Known install locations (`KNOWN_CLIENT_PATHS`) are probed to pre-fill the clients list, and servers without an explicit client are auto-assigned by matching `server_type` to a client `version`.
+- Shape: `{"servers": [...], "settings": {"profiles": {"1.12.1": "...", "2.4.3": "...", "3.3.5a": "..."}, ...}}` — see `servers.example.json`.
+- First run: built from `DEFAULT_SERVERS` + `DEFAULT_SETTINGS`; known install locations (`KNOWN_PROFILE_PATHS`) pre-fill empty profile slots, and a `WoW.exe` next to the script is picked up into the first empty slot. Legacy `clients` / `wow_exe` / per-server paths migrate into the matching profile.
 - Every add/edit/delete/reorder calls `save_data()` (GTK) / `save_servers()` (Tk) immediately. The file is **git-ignored** — never commit your real one.
-- Per-server WoW path wins: `effective_wow_exe(server, settings)` returns `server.wow_path` when `alt_wow` is set, else the named client's `path` (`server.client`), else the global `settings.wow_exe`.
-- Launcher resolution: `effective_launch(server, settings)` returns `(launcher, wineprefix, args)` — per-client fields win, blanks fall back to `default_launcher` / `default_wineprefix` / `default_args`.
+- Profile resolution: `effective_wow_exe(server, settings)` returns `settings.profiles[server.server_type]`. If it is missing on Play, the app asks you to pick the `WoW.exe` and saves it.
+- Launcher resolution: `effective_launch(server, settings)` returns the global `default_launcher` / `default_wineprefix` / `default_args` (one launcher for all profiles).
 - Windowed resolution: `effective_windowed(server, settings)` — per-server `windowed` OR global `default_windowed`.
 
 ### Status check (non-blocking)
@@ -152,18 +163,15 @@ cp servers.example.json servers.json
 | `name` / `address` | Display name + realmlist host (`logon.example.com`). |
 | `own_patchlist` / `patchlist` | When true, also writes `set patchlist`. |
 | `uses_preloader` / `preloader` | Launch this exe instead of `WoW.exe` (custom loaders). |
-| `alt_wow` / `wow_path` | Per-server client path, overrides the client choice and global `wow_exe`. |
-| `client` | Named client from Settings (`settings.clients`), e.g. `Vanilla 1.12`. Blank = default (first client). |
+| `server_type` | One of `1.12.1`, `2.4.3`, `3.3.5a` — picks which of the 3 profiles Play uses. |
 | `windowed` | Start this server in windowed mode (`SET gxWindow "1"` on Play). |
 | `auto_clear` | Clear `WDB` on every Play for this server. |
-| `server_type` | Label only (`...`, `1.12.1`, `2.4.3`, `3.3.5a`). |
 | `rss` / `site` / `info` | Shown in the ⓘ info dialog; `site` has a Visit button. |
 
 | Setting | Meaning |
 |---|---|
-| `wow_exe` | Global client path (legacy fallback). |
-| `clients` | Named WoW installs: `{name, version, path, launcher, wineprefix, args}`. Blank launcher fields use the defaults below. |
-| `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (`wine` by default), `WINEPREFIX` and extra args used when a client leaves them blank. |
+| `profiles` | The 3 fixed WoW installs: `{1.12.1, 2.4.3, 3.3.5a}` → `WoW.exe` path each. |
+| `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (`wine` by default), `WINEPREFIX` and extra args used for every profile. |
 | `default_windowed` | Start windowed unless the server says otherwise. |
 | `run_extra` / `extra_path` / `extra_skip_if_running` | Launch another program alongside WoW. |
 | `timeout_ms` | Status-check TCP timeout (500–15000). |

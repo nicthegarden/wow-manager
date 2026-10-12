@@ -1,20 +1,31 @@
 {
   "servers": [
     {
-      "name": "CHROMIECRAFT",
-      "address": "logon.chromiecraft.com",
+      "name": "OctoWoW",
+      "address": "play.octowow.st",
       "own_patchlist": false,
       "patchlist": "",
       "uses_preloader": false,
       "preloader": "",
-      "alt_wow": false,
-      "wow_path": "",
-      "client": "WotLK 3.3.5",
+      "windowed": false,
+      "auto_clear": false,
+      "server_type": "1.12.1",
+      "rss": "",
+      "site": "https://octowow.st",
+      "info": ""
+    },
+    {
+      "name": "FrozenThrone",
+      "address": "frozenthrone.co",
+      "own_patchlist": false,
+      "patchlist": "",
+      "uses_preloader": false,
+      "preloader": "",
       "windowed": false,
       "auto_clear": false,
       "server_type": "3.3.5a",
       "rss": "",
-      "site": "https://chromiecraft.com",
+      "site": "https://frozenthrone.co",
       "info": ""
     },
     {
@@ -24,62 +35,20 @@
       "patchlist": "",
       "uses_preloader": false,
       "preloader": "",
-      "alt_wow": false,
-      "wow_path": "",
-      "client": "WotLK 3.3.5",
       "windowed": false,
       "auto_clear": false,
       "server_type": "3.3.5a",
       "rss": "",
       "site": "https://warmane.com",
       "info": ""
-    },
-    {
-      "name": "Example",
-      "address": "logon.example.com",
-      "own_patchlist": false,
-      "patchlist": "",
-      "uses_preloader": false,
-      "preloader": "",
-      "alt_wow": false,
-      "wow_path": "",
-      "client": "",
-      "windowed": false,
-      "auto_clear": false,
-      "server_type": "3.3.5a",
-      "rss": "",
-      "site": "",
-      "info": ""
     }
   ],
   "settings": {
-    "wow_exe": "",
-    "clients": [
-      {
-        "name": "Vanilla 1.12",
-        "version": "1.12.1",
-        "path": "/path/to/WoW-1.12/WoW.exe",
-        "launcher": "",
-        "wineprefix": "",
-        "args": ""
-      },
-      {
-        "name": "TBC 2.4.3",
-        "version": "2.4.3",
-        "path": "/path/to/WoW-2.4.3/WoW.exe",
-        "launcher": "",
-        "wineprefix": "",
-        "args": ""
-      },
-      {
-        "name": "WotLK 3.3.5",
-        "version": "3.3.5a",
-        "path": "/path/to/WoW-3.3.5/Wow.exe",
-        "launcher": "wine",
-        "wineprefix": "",
-        "args": ""
-      }
-    ],
+    "profiles": {
+      "1.12.1": "/path/to/WoW-1.12/WoW.exe",
+      "2.4.3": "/path/to/WoW-2.4.3/WoW.exe",
+      "3.3.5a": "/path/to/WoW-3.3.5/WoW.exe"
+    },
     "default_launcher": "wine",
     "default_wineprefix": "",
     "default_args": "",
