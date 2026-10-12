@@ -23,7 +23,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "4.5.0"
+APP_VERSION = "4.5.1"
 
 DEFAULT_SETTINGS = {
     "profiles": {"1.12.1": "", "2.4.3": "", "3.3.5a": ""},
@@ -80,6 +80,21 @@ window { background: #0d0d0d; }
 .bigplay { font-size: 20px; font-weight: bold; color: #d8a920; }
 .dim { color: #8a6d15; }
 .val { color: #e8d98a; }
+.msg label { color: #e8d98a; }
+button { background: #1a1a1a; color: #d8a920; border: 1px solid #8a6d15; border-radius: 4px; padding: 4px 12px; }
+button:hover { background: #3a2f10; color: #ffe9a0; }
+button:disabled { color: #555555; border-color: #444444; }
+entry { background: #141414; color: #e8d98a; border: 1px solid #8a6d15; border-radius: 4px; padding: 4px 6px; caret-color: #d8a920; }
+entry:disabled { background: #0d0d0d; color: #666666; }
+checkbutton { color: #e8d98a; }
+notebook { background: #0d0d0d; }
+notebook header { background: #0d0d0d; border-bottom: 1px solid #8a6d15; }
+notebook tab { background: #141414; color: #8a6d15; padding: 6px 14px; margin: 2px; }
+notebook tab:checked { background: #3a2f10; color: #d8a920; }
+headerbar { background: #141414; color: #d8a920; border-bottom: 1px solid #8a6d15; }
+headerbar label { color: #d8a920; }
+spinbutton { background: #141414; color: #e8d98a; }
+dropdown { background: #141414; color: #e8d98a; border: 1px solid #8a6d15; border-radius: 4px; }
 """
 
 
@@ -499,6 +514,16 @@ def kill_pid(pid, force=False):
     return wplat.kill_pid(pid, force=force)
 
 
+def show_message(parent, message_type, text):
+    """Orange-themed message popup (.msg styling), auto-closes on response."""
+    m = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=message_type,
+                          buttons=Gtk.ButtonsType.OK, text=text)
+    m.add_css_class("msg")
+    m.connect("response", lambda *a: m.close())
+    m.present()
+    return m
+
+
 class SettingsDialog(Gtk.Dialog):
     """Settings: 3 fixed WoW profiles (one WoW.exe per version) + launch defaults."""
     def __init__(self, parent, settings):
@@ -516,14 +541,19 @@ class SettingsDialog(Gtk.Dialog):
         g.set_margin_top(10); g.set_margin_bottom(10); g.set_margin_start(10); g.set_margin_end(10)
         outer.set_child(g)
 
-        g.attach(Gtk.Label(label="WoW clients: one WoW.exe per version.", halign=Gtk.Align.START), 0, 0, 2, 1)
+        head = Gtk.Label(label="WoW clients: one WoW.exe per version.", halign=Gtk.Align.START)
+        head.add_css_class("gold")
+        g.attach(head, 0, 0, 2, 1)
         note0 = Gtk.Label(label="Pick the WoW.exe for each version you play. Play uses the profile matching the server's version.")
         note0.set_wrap(True)
+        note0.add_css_class("dim")
         g.attach(note0, 0, 1, 2, 1)
         self.profile_entries = {}
         row = 2
         for v in PROFILE_VERSIONS:
-            g.attach(Gtk.Label(label=f"{PROFILE_LABELS.get(v, v)}:", halign=Gtk.Align.START), 0, row, 1, 1)
+            ver_lbl = Gtk.Label(label=f"{PROFILE_LABELS.get(v, v)}:", halign=Gtk.Align.START)
+            ver_lbl.add_css_class("val")
+            g.attach(ver_lbl, 0, row, 1, 1)
             hb = Gtk.Box(spacing=6, hexpand=True)
             entry = Gtk.Entry(hexpand=True, placeholder_text=".../WoW.exe")
             entry.set_text(profiles.get(v, ""))
@@ -543,17 +573,22 @@ class SettingsDialog(Gtk.Dialog):
         g.attach(b_auto, 0, row, 2, 1)
         row += 1
 
-        g.attach(Gtk.Label(label="Launcher (used for all profiles):", halign=Gtk.Align.START), 0, row, 2, 1)
+        launch_head = Gtk.Label(label="Launcher (used for all profiles):", halign=Gtk.Align.START)
+        launch_head.add_css_class("gold")
+        g.attach(launch_head, 0, row, 2, 1)
         row += 1
         defgrid = Gtk.Grid(column_spacing=6, row_spacing=6)
         g.attach(defgrid, 0, row, 2, 1)
-        defgrid.attach(Gtk.Label(label="Launcher:", halign=Gtk.Align.START), 0, 0, 1, 1)
+        launcher_lbl = Gtk.Label(label="Launcher:", halign=Gtk.Align.START)
+        launcher_lbl.add_css_class("dim")
+        defgrid.attach(launcher_lbl, 0, 0, 1, 1)
         self.def_launcher = Gtk.Entry(hexpand=True, placeholder_text=wplat.default_launcher() or "(start directly)")
         self.def_launcher.set_text(settings.get("default_launcher", wplat.default_launcher()))
         if wplat.IS_WINDOWS:
             self.def_launcher.set_tooltip_text("Optional: a wrapper to start WoW through (e.g. gamemoderun). Blank = start WoW.exe directly.")
         defgrid.attach(self.def_launcher, 1, 0, 1, 1)
         prefix_lbl = Gtk.Label(label="WINEPREFIX:", halign=Gtk.Align.START)
+        prefix_lbl.add_css_class("dim")
         defgrid.attach(prefix_lbl, 0, 1, 1, 1)
         self.def_prefix = Gtk.Entry(hexpand=True, placeholder_text="(none)")
         self.def_prefix.set_text(settings.get("default_wineprefix", ""))
@@ -564,7 +599,9 @@ class SettingsDialog(Gtk.Dialog):
             prefix_lbl.set_tooltip_text("Wine-only: not used on Windows.")
             self.def_prefix.set_sensitive(False)
             self.def_prefix.set_tooltip_text("Wine-only: not used on Windows.")
-        defgrid.attach(Gtk.Label(label="Extra args:", halign=Gtk.Align.START), 0, 2, 1, 1)
+        args_lbl = Gtk.Label(label="Extra args:", halign=Gtk.Align.START)
+        args_lbl.add_css_class("dim")
+        defgrid.attach(args_lbl, 0, 2, 1, 1)
         self.def_args = Gtk.Entry(hexpand=True, placeholder_text="(none)")
         self.def_args.set_text(settings.get("default_args", ""))
         defgrid.attach(self.def_args, 1, 2, 1, 1)
@@ -589,7 +626,9 @@ class SettingsDialog(Gtk.Dialog):
         g.attach(b_search2, 1, row, 1, 1)
         row += 1
 
-        g.attach(Gtk.Label(label="Connection timeout (milliseconds):", halign=Gtk.Align.START), 0, row, 1, 1)
+        timeout_lbl = Gtk.Label(label="Connection timeout (milliseconds):", halign=Gtk.Align.START)
+        timeout_lbl.add_css_class("dim")
+        g.attach(timeout_lbl, 0, row, 1, 1)
         self.timeout = Gtk.SpinButton.new_with_range(500, 15000, 500)
         self.timeout.set_value(settings.get("timeout_ms", 3000))
         g.attach(self.timeout, 1, row, 1, 1)
@@ -600,7 +639,9 @@ class SettingsDialog(Gtk.Dialog):
         g.attach(self.save_pos, 0, row, 2, 1)
         row += 1
 
-        g.attach(Gtk.Label(label="Check program updates automatically:", halign=Gtk.Align.START), 0, row, 1, 1)
+        upd_lbl = Gtk.Label(label="Check program updates automatically:", halign=Gtk.Align.START)
+        upd_lbl.add_css_class("dim")
+        g.attach(upd_lbl, 0, row, 1, 1)
         self.upd = Gtk.DropDown.new_from_strings(["Never", "Once a day", "Once a week"])
         try:
             self.upd.set_selected(["Never", "Once a day", "Once a week"].index(settings.get("check_updates", "Once a day")))
@@ -622,9 +663,7 @@ class SettingsDialog(Gtk.Dialog):
             existing = [str(p) for p in files if p.exists()]
             msg = title + "\n" + (
                 "\n".join(existing) if existing else f"(none found yet - will create {files[0]})")
-        m2 = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
-        m2.connect("response", lambda *a: m2.close())
-        m2.present()
+        show_message(self, Gtk.MessageType.INFO, msg)
 
     def autodetect(self):
         for ver, paths in KNOWN_PROFILE_PATHS.items():
@@ -668,16 +707,22 @@ class ServerDialog(Gtk.Dialog):
         basic = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         basic.set_margin_top(30); basic.set_margin_bottom(30); basic.set_margin_start(30); basic.set_margin_end(30)
         nb.append_page(basic, Gtk.Label(label="Basic settings"))
-        basic.append(Gtk.Label(label="Server name:"))
+
+        def dim_label(text):
+            lbl = Gtk.Label(label=text, halign=Gtk.Align.START)
+            lbl.add_css_class("dim")
+            return lbl
+
+        basic.append(dim_label("Server name:"))
         self.e_name = Gtk.Entry(); self.e_name.set_text(s.get("name", ""))
         basic.append(self.e_name)
-        basic.append(Gtk.Label(label="Server address:"))
+        basic.append(dim_label("Server address:"))
         self.e_addr = Gtk.Entry(); self.e_addr.set_text(s.get("address", s.get("realmlist", "")))
         basic.append(self.e_addr)
-        basic.append(Gtk.Label(label="Account name (optional):"))
+        basic.append(dim_label("Account name (optional):"))
         self.e_acct = Gtk.Entry(); self.e_acct.set_text(s.get("account", ""))
         basic.append(self.e_acct)
-        basic.append(Gtk.Label(label="Client version (picks one of the 3 profiles):"))
+        basic.append(dim_label("Client version (picks one of the 3 profiles):"))
         self.e_type = Gtk.DropDown.new_from_strings(PROFILE_VERSIONS)
         cur = (s.get("server_type") or "").strip()
         self.e_type.set_selected(PROFILE_VERSIONS.index(cur) if cur in PROFILE_VERSIONS else 2)
@@ -713,17 +758,17 @@ class ServerDialog(Gtk.Dialog):
 
         grid = Gtk.Grid(column_spacing=6, row_spacing=6)
         adv.append(grid)
-        grid.attach(Gtk.Label(label="Server RSS channel:", halign=Gtk.Align.START), 0, 0, 1, 1)
+        grid.attach(dim_label("Server RSS channel:"), 0, 0, 1, 1)
         self.e_rss = Gtk.Entry(hexpand=True); self.e_rss.set_text(s.get("rss", ""))
         grid.attach(self.e_rss, 1, 0, 1, 1)
-        grid.attach(Gtk.Label(label="Server site:", halign=Gtk.Align.START), 0, 1, 1, 1)
+        grid.attach(dim_label("Server site:"), 0, 1, 1, 1)
         self.e_site = Gtk.Entry(hexpand=True); self.e_site.set_text(s.get("site", ""))
         b_visit = Gtk.Button(label="Visit")
         b_visit.connect("clicked", lambda *a: webbrowser.open(self.e_site.get_text()) if self.e_site.get_text() else None)
         hb3 = Gtk.Box(spacing=6)
         hb3.append(self.e_site); hb3.append(b_visit)
         grid.attach(hb3, 1, 1, 1, 1)
-        grid.attach(Gtk.Label(label="Additional info:", halign=Gtk.Align.START), 0, 2, 1, 1)
+        grid.attach(dim_label("Additional info:"), 0, 2, 1, 1)
         self.e_info = Gtk.Entry(hexpand=True); self.e_info.set_text(s.get("info", ""))
         grid.attach(self.e_info, 1, 2, 1, 1)
 
@@ -761,6 +806,14 @@ class AddonsDialog(Gtk.Dialog):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.set_margin_top(8); box.set_margin_bottom(8); box.set_margin_start(8); box.set_margin_end(8)
         self.get_content_area().append(box)
+
+        self.title_lbl = Gtk.Label(halign=Gtk.Align.START)
+        self.title_lbl.add_css_class("gold")
+        try:
+            self.title_lbl.set_text(f"AddOns — {Path(wow_exe).parent.name}")
+        except Exception:
+            self.title_lbl.set_text("AddOns")
+        box.append(self.title_lbl)
 
         self.path_lbl = Gtk.Label(halign=Gtk.Align.START, hexpand=True)
         self.path_lbl.add_css_class("dim")
@@ -853,6 +906,7 @@ class AddonsDialog(Gtk.Dialog):
             return
         c = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
                               buttons=Gtk.ButtonsType.OK_CANCEL, text=f"Delete addon '{a['name']}'?")
+        c.add_css_class("msg")
         def on_resp(d, r):
             if r == Gtk.ResponseType.OK:
                 try:
@@ -904,9 +958,7 @@ class AddonsDialog(Gtk.Dialog):
             self.error(str(e))
 
     def error(self, text):
-        m = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK, text=text)
-        m.connect("response", lambda *a: m.close())
-        m.present()
+        show_message(self, Gtk.MessageType.ERROR, text)
 
 
 class App(Gtk.Application):
@@ -1141,9 +1193,7 @@ class App(Gtk.Application):
         if resp == Gtk.ResponseType.OK:
             data = dlg.result()
             if not data["name"] or not data["address"]:
-                m = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK, text="Server name and address are required.")
-                m.connect("response", lambda *a: m.close())
-                m.present()
+                show_message(self.win, Gtk.MessageType.ERROR, "Server name and address are required.")
                 return
             if old is None:
                 self.servers.append(data)
@@ -1173,10 +1223,8 @@ class App(Gtk.Application):
         if not wow_exe or not Path(wow_exe).is_file():
             wow_exe = autodetect_wow_exe() or ""
         if not wow_exe:
-            m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
-                                  text="No WoW.exe found for this profile.\n\nOpen Settings and set the path.")
-            m.connect("response", lambda *a: m.close())
-            m.present()
+            show_message(win, Gtk.MessageType.ERROR,
+                         "No WoW.exe found for this profile.\n\nOpen Settings and set the path.")
             return
         dlg = AddonsDialog(win, wow_exe)
         dlg.connect("response", lambda d, r: d.close())
@@ -1200,9 +1248,7 @@ class App(Gtk.Application):
                 f"Client: {describe_client(s, self.settings)}\nExe: {exe}\nLaunch: {describe_launch(s, self.settings)}\n"
                 f"Windowed: {'Yes' if effective_windowed(s, self.settings) else 'No'}\nRealmlist files:\n{rl}\n"
                 f"Site: {s.get('site')}\nInfo: {s.get('info')}")
-        m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=text)
-        m.connect("response", lambda *a: m.close())
-        m.present()
+        show_message(win, Gtk.MessageType.INFO, text)
 
     def ask_profile_path(self, win, server):
         """Profile for this server's version is missing: let the user point at WoW.exe now.
@@ -1216,6 +1262,7 @@ class App(Gtk.Application):
                "Choose its WoW.exe now?")
         q = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.QUESTION,
                               buttons=Gtk.ButtonsType.OK_CANCEL, text=msg)
+        q.add_css_class("msg")
 
         def on_answer(dlg, resp):
             dlg.close()
@@ -1257,9 +1304,7 @@ class App(Gtk.Application):
         ok, info = write_realmlist(wow_exe, s.get("address", ""), patch, s.get("account", ""),
                                    effective_windowed(s, self.settings))
         if not ok:
-            m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK, text=f"Could not write realmlist:\n{info}")
-            m.connect("response", lambda *a: m.close())
-            m.present()
+            show_message(win, Gtk.MessageType.ERROR, f"Could not write realmlist:\n{info}")
             return
         if s.get("auto_clear"):
             clear_wdb(wow_exe)
@@ -1289,9 +1334,7 @@ class App(Gtk.Application):
                                   "started": datetime.now().strftime("%H:%M:%S")})
             self.refresh_instances()
         except Exception as e:
-            m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK, text=str(e))
-            m.connect("response", lambda *a: m.close())
-            m.present()
+            show_message(win, Gtk.MessageType.ERROR, str(e))
 
     # ---- launched instances (PID tracking, detached) ----
     def entry_alive(self, e):
@@ -1340,10 +1383,7 @@ class App(Gtk.Application):
         entry = self.launched[idx]
         ok, err = kill_pid(entry["pid"], force=force)
         if not ok and "already gone" not in err:
-            m = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=Gtk.MessageType.ERROR,
-                                  buttons=Gtk.ButtonsType.OK, text=f"Could not kill PID {entry['pid']}:\n{err}")
-            m.connect("response", lambda *a: m.close())
-            m.present()
+            show_message(self.win, Gtk.MessageType.ERROR, f"Could not kill PID {entry['pid']}:\n{err}")
         # give SIGTERM a moment, then refresh (prunes dead PIDs)
         GLib.timeout_add(500, self.refresh_instances)
 

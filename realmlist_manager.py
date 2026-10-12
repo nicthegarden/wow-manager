@@ -359,7 +359,8 @@ class App(tk.Tk):
         entries = {}
         for i, ver in enumerate(PROFILE_VERSIONS):
             tk.Label(top, text=ver, bg=BG, fg=GOLD, anchor="w").grid(row=i, column=0, sticky="w", padx=6, pady=3)
-            e = tk.Entry(top, width=40)
+            e = tk.Entry(top, width=40, bg=PANEL, fg=FG, insertbackground=GOLD,
+                         highlightbackground=GOLD_DIM, relief="flat")
             e.insert(0, self.profiles.get(ver, ""))
             e.grid(row=i, column=1, padx=6, pady=3)
             entries[ver] = e
@@ -369,14 +370,16 @@ class App(tk.Tk):
                 if q:
                     entries[v].delete(0, tk.END)
                     entries[v].insert(0, q)
-            tk.Button(top, text="...", command=browse).grid(row=i, column=2, padx=6)
+            tk.Button(top, text="...", bg="#1a1a1a", fg=GOLD, activebackground="#3a2f10",
+                      activeforeground="#ffe9a0", relief="flat", command=browse).grid(row=i, column=2, padx=6)
         def save():
             for v, e in entries.items():
                 self.profiles[v] = e.get().strip()
             save_servers(self.servers, self.profiles)
             self.on_select()
             top.destroy()
-        tk.Button(top, text="Save", command=save).grid(row=len(PROFILE_VERSIONS), column=0, columnspan=3, pady=8)
+        tk.Button(top, text="Save", bg="#1a1a1a", fg=GOLD, activebackground="#3a2f10",
+                  activeforeground="#ffe9a0", relief="flat", command=save).grid(row=len(PROFILE_VERSIONS), column=0, columnspan=3, pady=8)
 
     def play(self):
         s = self.current()

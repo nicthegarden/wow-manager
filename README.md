@@ -1,6 +1,10 @@
-# WoW Realmlist Manager — v4.5.0
+# WoW Realmlist Manager — v4.5.1
 
 A cross-platform clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client — without hand-editing config files.
+
+## What's new in 4.5.1
+
+- **One orange theme everywhere:** the main window's gold-on-black styling now covers all dialogs too — Settings, Add/Edit server tabs, AddOns, and every info/error popup share the same buttons, entries, tabs and labels.
 
 ## What's new in 4.5.0
 
