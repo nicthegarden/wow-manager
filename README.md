@@ -1,6 +1,21 @@
-# WoW Realmlist Manager
+# WoW Realmlist Manager — v2.0.0
 
 A Linux clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client via Wine — without hand-editing config files.
+
+## What's new in 2.0.0
+
+- **Multi-client:** named WoW installs per version (`1.12.1` / `2.4.3` / `3.3.5a`) in ⚙ Settings; each server picks a client from a dropdown (auto-assigned by `server_type`).
+- **Per-client launchers:** each client has its own launcher command, `WINEPREFIX` and extra args, with global defaults as fallback.
+- **Per-client realmlist lookup:** `Locate realmlist` buttons in Settings and in Add/Edit server show exactly which `realmlist.wtf` file(s) Play will update.
+- **Details grid** now shows the resolved `WoW client` and `Launcher` per server.
+
+![Main window 2.0.0 — WoW client and Launcher rows in the details grid](assets/Mainapp.png)
+
+![Settings 2.0.0 — WoW clients with per-version launchers](assets/Settings.png)
+
+![Edit server 2.0.0 — Basic settings](assets/Server%20edit.png)
+
+![Edit server 2.0.0 — Additional settings with WoW client dropdown and Locate realmlist](assets/Server%20additional%20settings.png)
 
 ## Screenshot overview
 

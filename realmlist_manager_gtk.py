@@ -23,6 +23,8 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
+APP_VERSION = "2.0.0"
+
 DEFAULT_SETTINGS = {
     "wow_exe": "",  # legacy default client: resolved at runtime
     "clients": [],  # [{"name","version","path","launcher","wineprefix","args"}]
@@ -1156,7 +1158,7 @@ class App(Gtk.Application):
         self._drag_src = None
 
     def do_activate(self):
-        win = Gtk.ApplicationWindow(application=self, title="Realmlist modifier")
+        win = Gtk.ApplicationWindow(application=self, title=f"Realmlist modifier {APP_VERSION}")
         win.set_default_size(300, 540)
         win.set_resizable(False)
         css = Gtk.CssProvider()
@@ -1168,7 +1170,7 @@ class App(Gtk.Application):
         win.set_child(box)
 
         top = Gtk.Box(spacing=6)
-        title = Gtk.Label(label="Ⓦ  Realmlist modifier")
+        title = Gtk.Label(label=f"Ⓦ  Realmlist modifier {APP_VERSION}")
         title.add_css_class("gold"); title.set_hexpand(True); title.set_halign(Gtk.Align.START)
         top.append(title)
         b_set = Gtk.Button(label="⚙")
