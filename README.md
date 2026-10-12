@@ -1,6 +1,11 @@
-# WoW Realmlist Manager — v2.0.0
+# WoW Realmlist Manager — v2.1.0
 
 A Linux clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client via Wine — without hand-editing config files.
+
+## What's new in 2.1.0
+
+- **Windowed-mode startup:** per-server `Start in windowed mode` checkbox (Additional settings) plus a global `Start windowed by default` fallback in ⚙ Settings. On Play, `SET gxWindow "1"` is written into the client's `WTF/Config.wtf` (created if missing); when off, your existing `gxWindow` value is left untouched.
+- Details grid and ⓘ dialog show the resolved `Windowed: Yes/No` state.
 
 ## What's new in 2.0.0
 
@@ -29,7 +34,7 @@ What you're looking at, top to bottom:
 | Server list (gold box) | Your servers. The colored dot is the status: 🟢 online, 🔴 offline, ⚪ unknown/checking. Click to select, double-click (or ▶ Play) to launch. Drag rows to reorder. |
 | `Status: Online / Ping: 107ms` + `⟳` / `ⓘ` | Result of the last TCP status check. `⟳` re-checks all servers, `ⓘ` shows the selected server's info (type, site, notes). |
 | `▶ Play` + `+ – /` | `▶ Play` writes the realmlist and launches WoW. `+` adds, `–` removes, `✓` edits a server. |
-| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Uses preloader`, `Automatic cache clearing`) | Shows the selected server's resolved config. |
+| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Windowed`, `Uses preloader`, `Automatic cache clearing`) | Shows the selected server's resolved config. |
 | `Launched by manager` + `Kill` / `Force kill` | PIDs this app launched (detached, so they survive manager exit). `Kill` = SIGTERM, `Force kill` = SIGKILL. Dead PIDs are pruned automatically every 2 s. |
 
 ## Features
@@ -38,7 +43,8 @@ What you're looking at, top to bottom:
 - One-click **Play**: writes every `realmlist.wtf`, patches `WTF/Config.wtf`, optionally clears `WDB`, launches via the client's launcher
 - Multi-client: named WoW installs per version (`1.12.1` / `2.4.3` / `3.3.5a`) in ⚙ Settings; each server picks a client from a dropdown (auto-assigned by `server_type` on first run). Each client has its own launcher, `WINEPREFIX` and extra args.
 - Per-client realmlist lookup: `Locate realmlist` in Settings (selected client) and in Add/Edit server shows exactly which `realmlist.wtf` file(s) Play will update
-- Add / edit / remove servers: Basic tab (name, address) + Additional tab (own patchlist, preloader, alternative WoW path, WoW client, auto cache clear, server type, RSS, site, info)
+- Windowed-mode startup per server (`windowed`) with a global `default_windowed` fallback — writes `SET gxWindow "1"` on Play, never forces fullscreen
+- Add / edit / remove servers: Basic tab (name, address) + Additional tab (own patchlist, preloader, alternative WoW path, WoW client, windowed mode, auto cache clear, server type, RSS, site, info)
 - Global Settings: `WoW.exe` path (auto-detects `WoW.exe` next to the script), run-an-extra-program with WoW, connection timeout
 - AddOns manager: enable/disable (`.disabled` rename), delete, install from `.zip` (zip-slip protected), open folder
 - Instance tracker: detached `Popen(start_new_session=True)` launches, liveness via `poll()`/`/proc`, SIGTERM/SIGKILL buttons
@@ -96,7 +102,7 @@ cp servers.example.json servers.json
 ## Usage
 
 1. **Settings (⚙):** set your WoW clients once — one entry per install (e.g. Vanilla `1.12.1`, TBC `2.4.3`, WotLK `3.3.5a`), each with its own launcher / `WINEPREFIX` / args. If a `WoW.exe` sits next to the script it's picked up automatically. Use `Locate realmlist` to verify which files a client writes.
-2. **Add server (+):** name + address (e.g. `logon.example.com`). Use the Additional tab for patchlist / preloader / WoW client / per-server WoW path. `Locate realmlist` there previews the files Play will touch.
+2. **Add server (+):** name + address (e.g. `logon.example.com`). Use the Additional tab for patchlist / preloader / WoW client / windowed mode / per-server WoW path. `Locate realmlist` there previews the files Play will touch.
 3. **Select:** status, ping and the details grid update. `⟳` re-pings everything without blocking the UI.
 4. **Play (▶):** writes configs (see below) and launches with Wine. Use **AddOns** beforehand to set up mods.
 5. **Instances:** after Play, the PID appears under "Launched by manager". `Kill` / `Force kill` stops it.
@@ -111,6 +117,7 @@ cp servers.example.json servers.json
 - Every add/edit/delete/reorder calls `save_data()` (GTK) / `save_servers()` (Tk) immediately. The file is **git-ignored** — never commit your real one.
 - Per-server WoW path wins: `effective_wow_exe(server, settings)` returns `server.wow_path` when `alt_wow` is set, else the named client's `path` (`server.client`), else the global `settings.wow_exe`.
 - Launcher resolution: `effective_launch(server, settings)` returns `(launcher, wineprefix, args)` — per-client fields win, blanks fall back to `default_launcher` / `default_wineprefix` / `default_args`.
+- Windowed resolution: `effective_windowed(server, settings)` — per-server `windowed` OR global `default_windowed`.
 
 ### Status check (non-blocking)
 
@@ -124,7 +131,7 @@ cp servers.example.json servers.json
 1. Resolve the client dir: parent of `WoW.exe` (or the dir itself if a folder was given).
 2. Find **every** `realmlist.wtf` under it via case-insensitive `rglob` — covers 1.12 (`<wow>/realmlist.wtf`) and 2.x/3.x (`Data/<locale>/realmlist.wtf`) without hardcoding a layout. Falls back to `<wow>/realmlist.wtf` if none exist yet.
 3. Write `set realmlist <address>` (+ `set patchlist ...` if the server has `own_patchlist`) into each file.
-4. Patch `<wow>/WTF/Config.wtf` in place: replace existing `SET realmlist` / `SET patchlist` lines, append if missing, drop patchlist when the server doesn't use one.
+4. Patch `<wow>/WTF/Config.wtf` in place: replace existing `SET realmlist` / `SET patchlist` lines, append if missing, drop patchlist when the server doesn't use one. When windowed mode is on (`windowed` or `default_windowed`), force `SET gxWindow "1"` (created with the file if missing); otherwise an existing `gxWindow` line is left alone.
 5. If `auto_clear`, delete all files under `<wow>/WDB` (cache).
 
 ### Play: launching
@@ -147,6 +154,7 @@ cp servers.example.json servers.json
 | `uses_preloader` / `preloader` | Launch this exe instead of `WoW.exe` (custom loaders). |
 | `alt_wow` / `wow_path` | Per-server client path, overrides the client choice and global `wow_exe`. |
 | `client` | Named client from Settings (`settings.clients`), e.g. `Vanilla 1.12`. Blank = default (first client). |
+| `windowed` | Start this server in windowed mode (`SET gxWindow "1"` on Play). |
 | `auto_clear` | Clear `WDB` on every Play for this server. |
 | `server_type` | Label only (`...`, `1.12.1`, `2.4.3`, `3.3.5a`). |
 | `rss` / `site` / `info` | Shown in the ⓘ info dialog; `site` has a Visit button. |
@@ -156,6 +164,7 @@ cp servers.example.json servers.json
 | `wow_exe` | Global client path (legacy fallback). |
 | `clients` | Named WoW installs: `{name, version, path, launcher, wineprefix, args}`. Blank launcher fields use the defaults below. |
 | `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (`wine` by default), `WINEPREFIX` and extra args used when a client leaves them blank. |
+| `default_windowed` | Start windowed unless the server says otherwise. |
 | `run_extra` / `extra_path` / `extra_skip_if_running` | Launch another program alongside WoW. |
 | `timeout_ms` | Status-check TCP timeout (500–15000). |
 | `save_window_pos` / `check_updates` | Parity options kept from the original tool. |

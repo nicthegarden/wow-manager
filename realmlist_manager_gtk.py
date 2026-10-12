@@ -23,7 +23,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 
 DEFAULT_SETTINGS = {
     "wow_exe": "",  # legacy default client: resolved at runtime
@@ -31,6 +31,7 @@ DEFAULT_SETTINGS = {
     "default_launcher": "wine",
     "default_wineprefix": "",
     "default_args": "",
+    "default_windowed": False,
     "run_extra": False,
     "extra_path": "",
     "extra_skip_if_running": False,
@@ -49,15 +50,15 @@ KNOWN_CLIENT_PATHS = [
 DEFAULT_SERVERS = [
     {"name": "CHROMIECRAFT", "address": "logon.chromiecraft.com",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "auto_clear": False,
+     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
      "server_type": "3.3.5a", "rss": "", "site": "https://chromiecraft.com", "info": ""},
     {"name": "Warmane", "address": "logon.warmane.com",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "auto_clear": False,
+     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
      "server_type": "3.3.5a", "rss": "", "site": "https://warmane.com", "info": ""},
     {"name": "Example", "address": "logon.example.com",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "alt_wow": False, "wow_path": "", "client": "", "auto_clear": False,
+     "alt_wow": False, "wow_path": "", "client": "", "windowed": False, "auto_clear": False,
      "server_type": "3.3.5a", "rss": "", "site": "", "info": ""},
 ]
 
@@ -103,9 +104,10 @@ def load_data():
                 if nearby:
                     settings["wow_exe"] = nearby
             _ensure_clients(servers, settings)
-            # fill missing per-server "client" key for forward compat
+            # fill missing per-server keys for forward compat
             for s in servers:
                 s.setdefault("client", "")
+                s.setdefault("windowed", False)
             save_data(servers, settings)
             return servers, settings
         except Exception:
@@ -122,6 +124,7 @@ def load_data():
         pass  # keep default; user picks it via Settings
     for s in servers:
         s.setdefault("client", "")
+        s.setdefault("windowed", False)
     _ensure_clients(servers, settings)
     try:
         save_data(servers, settings)
@@ -140,7 +143,7 @@ def _ensure_clients(servers, settings):
     except for adding missing autodetected entries.
     """
     clients = settings.get("clients") or []
-    for k in ("default_launcher", "default_wineprefix", "default_args"):
+    for k in ("default_launcher", "default_wineprefix", "default_args", "default_windowed"):
         settings.setdefault(k, DEFAULT_SETTINGS[k])
     have_paths = {c.get("path") for c in clients if c.get("path")}
 
@@ -381,7 +384,7 @@ def locate_realmlists(wow_exe_path):
     return [Path(s) for s in found]
 
 
-def write_realmlist(wow_exe_path, address, patchlist="", account=""):
+def write_realmlist(wow_exe_path, address, patchlist="", account="", windowed=False):
     wow_dir = wow_dir_of(wow_exe_path)
     if wow_dir is None:
         return False, "no WoW path configured"
@@ -406,7 +409,7 @@ def write_realmlist(wow_exe_path, address, patchlist="", account=""):
     try:
         if cfg.exists():
             clines = cfg.read_text(errors="ignore").splitlines()
-            out, f1, f2, f3 = [], False, False, False
+            out, f1, f2, f3, f4 = [], False, False, False, False
             for ln in clines:
                 u = ln.strip().upper()
                 if u.startswith("SET REALMLIST"):
@@ -421,6 +424,9 @@ def write_realmlist(wow_exe_path, address, patchlist="", account=""):
                     # else leave the existing account untouched
                     else:
                         out.append(ln); f3 = True
+                elif u.startswith("SET GXWINDOW"):
+                    # windowed launch requested: force windowed; otherwise keep user's value
+                    out.append('SET gxWindow "1"' if windowed else ln); f4 = True
                 else:
                     out.append(ln)
             if not f1:
@@ -429,11 +435,21 @@ def write_realmlist(wow_exe_path, address, patchlist="", account=""):
                 out.append(f'set patchlist {patchlist}')
             if account and not f3:
                 out.append(f'SET accountName "{account}"')
+            if windowed and not f4:
+                out.append('SET gxWindow "1"')
             cfg.write_text("\n".join(out) + "\n")
+        elif windowed:
+            cfg.parent.mkdir(parents=True, exist_ok=True)
+            cfg.write_text(f'set realmlist {address}\nSET gxWindow "1"\n')
     except Exception as e:
         return False, str(e)
     targets = [str(t) for t in written] + ([str(cfg)] if cfg.exists() else [])
     return True, "\n".join(targets)
+
+
+def effective_windowed(server, settings):
+    """Windowed-mode launch? Per-server checkbox OR global default (OR semantics)."""
+    return bool((server or {}).get("windowed", False) or (settings or {}).get("default_windowed", False))
 
 
 def clear_wdb(wow_exe_path):
@@ -619,6 +635,9 @@ class SettingsDialog(Gtk.Dialog):
         self.def_args = Gtk.Entry(hexpand=True, placeholder_text="(none)")
         self.def_args.set_text(settings.get("default_args", ""))
         defgrid.attach(self.def_args, 1, 2, 1, 1)
+        self.def_windowed = Gtk.CheckButton(label="Start windowed by default (SET gxWindow on Play)")
+        self.def_windowed.set_active(settings.get("default_windowed", False))
+        defgrid.attach(self.def_windowed, 0, 3, 2, 1)
 
         self.run_extra = Gtk.CheckButton(label="Run another program together with WoW")
         self.run_extra.set_active(settings["run_extra"])
@@ -808,6 +827,7 @@ class SettingsDialog(Gtk.Dialog):
             "default_launcher": self.def_launcher.get_text().strip() or "wine",
             "default_wineprefix": self.def_prefix.get_text().strip(),
             "default_args": self.def_args.get_text().strip(),
+            "default_windowed": self.def_windowed.get_active(),
             "run_extra": self.run_extra.get_active(),
             "extra_path": self.extra_entry.get_text().strip(),
             "extra_skip_if_running": self.skip_run.get_active(),
@@ -899,6 +919,10 @@ class ServerDialog(Gtk.Dialog):
         self.c_cache.set_active(s.get("auto_clear", False))
         adv.append(self.c_cache)
 
+        self.c_win = Gtk.CheckButton(label="Start in windowed mode (SET gxWindow on Play)")
+        self.c_win.set_active(s.get("windowed", False))
+        adv.append(self.c_win)
+
         grid = Gtk.Grid(column_spacing=6, row_spacing=6)
         adv.append(grid)
         grid.attach(Gtk.Label(label="Server type:", halign=Gtk.Align.START), 0, 0, 1, 1)
@@ -980,6 +1004,7 @@ class ServerDialog(Gtk.Dialog):
             "alt_wow": self.c_alt.get_active(),
             "wow_path": self.e_alt.get_text().strip(),
             "client": client,
+            "windowed": self.c_win.get_active(),
             "auto_clear": self.c_cache.get_active(),
             "server_type": opts[self.e_type.get_selected()],
             "rss": self.e_rss.get_text().strip(),
@@ -1220,7 +1245,7 @@ class App(Gtk.Application):
         box.append(det)
         for i, (key, label) in enumerate([("addr", "Server address:"), ("realmlist", "Realmlist:"),
                                           ("patchlist", "Patchlist:"), ("altpath", "WoW client:"),
-                                          ("launcher", "Launcher:"),
+                                          ("launcher", "Launcher:"), ("windowed", "Windowed:"),
                                           ("preloader", "Uses preloader/C-D:"), ("cache", "Automatic cache clearing"),
                                           ("account", "Account:")]):
             k = Gtk.Label(label=label, halign=Gtk.Align.START); k.add_css_class("dim")
@@ -1337,6 +1362,7 @@ class App(Gtk.Application):
         self.detail_labels["altpath"].set_tooltip_text(effective_wow_exe(s, self.settings) or "")
         self.detail_labels["launcher"].set_text(describe_launch(s, self.settings))
         self.detail_labels["launcher"].set_tooltip_text(describe_launch(s, self.settings))
+        self.detail_labels["windowed"].set_text("Yes" if effective_windowed(s, self.settings) else "No")
         self.detail_labels["preloader"].set_text("Yes" if s.get("uses_preloader") else "No")
         self.detail_labels["cache"].set_text("Yes" if s.get("auto_clear") else "No")
         self.detail_labels["account"].set_text(s.get("account", "") or "---")
@@ -1439,7 +1465,8 @@ class App(Gtk.Application):
         files = locate_realmlists(exe) if exe else []
         rl = "\n".join(str(p) for p in files[:4]) or "(no client)"
         text = (f"{s['name']}\nAddress: {s.get('address')}\nType: {s.get('server_type')}\n"
-                f"Client: {describe_client(s, self.settings)}\nExe: {exe}\nLaunch: {describe_launch(s, self.settings)}\nRealmlist files:\n{rl}\n"
+                f"Client: {describe_client(s, self.settings)}\nExe: {exe}\nLaunch: {describe_launch(s, self.settings)}\n"
+                f"Windowed: {'Yes' if effective_windowed(s, self.settings) else 'No'}\nRealmlist files:\n{rl}\n"
                 f"Site: {s.get('site')}\nInfo: {s.get('info')}")
         m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=text)
         m.connect("response", lambda *a: m.close())
@@ -1465,7 +1492,8 @@ class App(Gtk.Application):
             m.present()
             return
         patch = s.get("patchlist", "") if s.get("own_patchlist") else ""
-        ok, info = write_realmlist(wow_exe, s.get("address", ""), patch, s.get("account", ""))
+        ok, info = write_realmlist(wow_exe, s.get("address", ""), patch, s.get("account", ""),
+                                   effective_windowed(s, self.settings))
         if not ok:
             m = Gtk.MessageDialog(transient_for=win, modal=True, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK, text=f"Could not write realmlist:\n{info}")
             m.connect("response", lambda *a: m.close())
