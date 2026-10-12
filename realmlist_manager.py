@@ -1,13 +1,15 @@
-"""WoW Realmlist Manager for Linux (Tkinter) - mimics 'Realmlist modifier' screenshot."""
+"""WoW Realmlist Manager (Tkinter) - mimics 'Realmlist modifier' screenshot.
+Runs on Linux, Windows and macOS (see wow_platform.py for OS differences).
+"""
 import json
-import os
 import socket
-import subprocess
 import threading
 import time
 import tkinter as tk
 from tkinter import messagebox, simpledialog
 from pathlib import Path
+
+import wow_platform as wplat
 
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
@@ -401,8 +403,8 @@ class App(tk.Tk):
         if self.cache_var.get():
             clear_cache(wow_exe)
         try:
-            subprocess.Popen(["wine", wow_exe], cwd=str(Path(wow_exe).parent),
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            argv = wplat.build_argv(wow_exe, wplat.default_launcher(), "")
+            wplat.launch_detached(argv, Path(wow_exe).parent)
         except Exception as e:
             messagebox.showerror("Launch failed", str(e), parent=self)
 

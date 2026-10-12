@@ -1,20 +1,20 @@
-"""WoW Realmlist Manager for Linux (GTK4, no extra deps).
+"""WoW Realmlist Manager (GTK4, no extra deps).
 Replicates 'Realmlist modifier': main list + Settings + Add server (Basic/Additional).
+Runs on Linux, Windows and macOS (see wow_platform.py for OS differences).
 """
 import json
 import os
 import re
-import shlex
 import shutil
-import signal
 import socket
-import subprocess
 import threading
 import time
 import webbrowser
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+import wow_platform as wplat
 
 import gi
 gi.require_version("Gtk", "4.0")
@@ -23,7 +23,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "4.0.0"
+APP_VERSION = "4.5.0"
 
 DEFAULT_SETTINGS = {
     "profiles": {"1.12.1": "", "2.4.3": "", "3.3.5a": ""},
@@ -39,12 +39,8 @@ DEFAULT_SETTINGS = {
     "check_updates": "Once a day",
 }
 
-# Probed on first run / Autodetect to pre-fill empty profile slots.
-KNOWN_PROFILE_PATHS = {
-    "1.12.1": ["/mnt/hdd/Wow - VANILLA/WoW.exe"],
-    "2.4.3": ["/mnt/hdd/Wow - TBC/WoW.exe"],
-    "3.3.5a": ["/mnt/hdd/Wow - WOTLK/WoW.exe"],
-}
+# Probed on first run / Autodetect to pre-fill empty profile slots (per-OS).
+KNOWN_PROFILE_PATHS = wplat.known_profile_paths()
 KNOWN_CLIENT_PATHS = [
     ("/mnt/hdd/Wow - VANILLA/WoW.exe", "1.12.1"),
     ("/mnt/hdd/Wow - TBC/WoW.exe", "2.4.3"),
@@ -154,6 +150,9 @@ def _ensure_profiles(servers, settings):
     for v in [key for key in profiles if key not in PROFILE_VERSIONS]:
         del profiles[v]
     settings["profiles"] = profiles
+    if wplat.IS_WINDOWS and (settings.get("default_launcher") or "").strip().lower() == "wine":
+        # carried over from Linux or factory default: Wine doesn't run on Windows
+        settings["default_launcher"] = ""
     for k in ("default_launcher", "default_wineprefix", "default_args", "default_windowed"):
         settings.setdefault(k, DEFAULT_SETTINGS[k])
 
@@ -273,32 +272,30 @@ def effective_client(server, settings):
 
 
 def effective_launch(server, settings):
-    """Resolve (launcher, wineprefix, args) from the global defaults."""
-    launcher = ((settings or {}).get("default_launcher") or "wine").strip() or "wine"
-    wineprefix = ((settings or {}).get("default_wineprefix") or "").strip()
-    args = ((settings or {}).get("default_args") or "").strip()
+    """Resolve (launcher, wineprefix, args) from the global defaults.
+
+    Blank launcher means the OS default (wine, or direct start on Windows).
+    Wineprefix is Wine-only and ignored on Windows.
+    """
+    settings = settings or {}
+    launcher = (settings.get("default_launcher") or "").strip()
+    wineprefix = (settings.get("default_wineprefix") or "").strip()
+    args = (settings.get("default_args") or "").strip()
     return launcher, wineprefix, args
 
 
 def build_launch_cmd(target, launcher, args):
-    """Build argv: shlex-split launcher + extra args + [target].
+    """Build argv: launcher + extra args + [target] (see wow_platform.build_argv).
 
-    Launcher '' or 'wine' -> ['wine', target]. Extra args are appended
-    after the launcher but before the exe, e.g. launcher 'gamemoderun wine',
-    args '-dx9' -> ['gamemoderun', 'wine', '-dx9', target].
+    Blank launcher -> OS default: wine on Linux/macOS, direct start on Windows.
     """
-    parts = shlex.split(launcher) if (launcher or "").strip() else ["wine"]
-    if not parts:
-        parts = ["wine"]
-    if (args or "").strip():
-        parts += shlex.split(args)
-    return parts + [target]
+    return wplat.build_argv(target, launcher, args)
 
 
 def describe_launch(server, settings):
     launcher, wineprefix, args = effective_launch(server, settings)
     cmd = " ".join(build_launch_cmd("<WoW>", launcher, args))
-    if wineprefix:
+    if wineprefix and wplat.wineprefix_supported():
         cmd = f"WINEPREFIX={wineprefix} {cmd}"
     return cmd
 
@@ -443,11 +440,8 @@ def clear_wdb(wow_exe_path):
 
 
 def proc_running(name):
-    try:
-        r = subprocess.run(["pgrep", "-f", name], capture_output=True, text=True)
-        return r.returncode == 0
-    except Exception:
-        return False
+    """Is a process called `name` running? (pgrep on Linux/macOS, tasklist on Windows.)"""
+    return wplat.proc_running(name)
 
 
 def strip_wow_colors(text):
@@ -489,11 +483,7 @@ def list_addons(wow_exe_path):
 
 
 def pid_alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError, OSError):
-        return False
+    return wplat.pid_alive(pid)
 
 
 def proc_name(pid):
@@ -505,15 +495,8 @@ def proc_name(pid):
 
 
 def kill_pid(pid, force=False):
-    try:
-        os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)
-        return True, ""
-    except ProcessLookupError:
-        return False, "process already gone"
-    except PermissionError:
-        return False, "permission denied"
-    except Exception as e:
-        return False, str(e)
+    """Terminate a process (signals on Linux/macOS, taskkill on Windows)."""
+    return wplat.kill_pid(pid, force=force)
 
 
 class SettingsDialog(Gtk.Dialog):
@@ -565,13 +548,22 @@ class SettingsDialog(Gtk.Dialog):
         defgrid = Gtk.Grid(column_spacing=6, row_spacing=6)
         g.attach(defgrid, 0, row, 2, 1)
         defgrid.attach(Gtk.Label(label="Launcher:", halign=Gtk.Align.START), 0, 0, 1, 1)
-        self.def_launcher = Gtk.Entry(hexpand=True, placeholder_text="wine")
-        self.def_launcher.set_text(settings.get("default_launcher", "wine"))
+        self.def_launcher = Gtk.Entry(hexpand=True, placeholder_text=wplat.default_launcher() or "(start directly)")
+        self.def_launcher.set_text(settings.get("default_launcher", wplat.default_launcher()))
+        if wplat.IS_WINDOWS:
+            self.def_launcher.set_tooltip_text("Optional: a wrapper to start WoW through (e.g. gamemoderun). Blank = start WoW.exe directly.")
         defgrid.attach(self.def_launcher, 1, 0, 1, 1)
-        defgrid.attach(Gtk.Label(label="WINEPREFIX:", halign=Gtk.Align.START), 0, 1, 1, 1)
+        prefix_lbl = Gtk.Label(label="WINEPREFIX:", halign=Gtk.Align.START)
+        defgrid.attach(prefix_lbl, 0, 1, 1, 1)
         self.def_prefix = Gtk.Entry(hexpand=True, placeholder_text="(none)")
         self.def_prefix.set_text(settings.get("default_wineprefix", ""))
         defgrid.attach(self.def_prefix, 1, 1, 1, 1)
+        if not wplat.wineprefix_supported():
+            # Wine-only option: grey out on Windows where it does nothing.
+            prefix_lbl.set_sensitive(False)
+            prefix_lbl.set_tooltip_text("Wine-only: not used on Windows.")
+            self.def_prefix.set_sensitive(False)
+            self.def_prefix.set_tooltip_text("Wine-only: not used on Windows.")
         defgrid.attach(Gtk.Label(label="Extra args:", halign=Gtk.Align.START), 0, 2, 1, 1)
         self.def_args = Gtk.Entry(hexpand=True, placeholder_text="(none)")
         self.def_args.set_text(settings.get("default_args", ""))
@@ -649,7 +641,7 @@ class SettingsDialog(Gtk.Dialog):
     def result(self):
         return {
             "profiles": {v: e.get_text().strip() for v, e in self.profile_entries.items()},
-            "default_launcher": self.def_launcher.get_text().strip() or "wine",
+            "default_launcher": self.def_launcher.get_text().strip() or wplat.default_launcher(),
             "default_wineprefix": self.def_prefix.get_text().strip(),
             "default_args": self.def_args.get_text().strip(),
             "default_windowed": self.def_windowed.get_active(),
@@ -907,8 +899,7 @@ class AddonsDialog(Gtk.Dialog):
 
     def open_folder(self):
         try:
-            subprocess.Popen(["xdg-open", str(self.addons_dir())],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            wplat.open_folder(self.addons_dir())
         except Exception as e:
             self.error(str(e))
 
@@ -1277,8 +1268,7 @@ class App(Gtk.Application):
             if not (st.get("extra_skip_if_running") and proc_running(Path(st["extra_path"]).name)):
                 try:
                     # detached: survives manager exit
-                    ep = subprocess.Popen([st["extra_path"]], stdout=subprocess.DEVNULL,
-                                          stderr=subprocess.DEVNULL, start_new_session=True)
+                    ep = wplat.launch_detached([st["extra_path"]], Path(st["extra_path"]).parent)
                     self.launched.append({"pid": ep.pid, "proc": ep,
                                           "server": f"{s['name']} (extra)", "exe": st["extra_path"],
                                           "started": datetime.now().strftime("%H:%M:%S")})
@@ -1288,14 +1278,12 @@ class App(Gtk.Application):
         launcher, wineprefix, extra_args = effective_launch(s, st)
         argv = build_launch_cmd(target, launcher, extra_args)
         env = None
-        if wineprefix:
+        if wineprefix and wplat.wineprefix_supported():
             env = dict(os.environ)
             env["WINEPREFIX"] = wineprefix
         try:
-            # detached: survives manager exit (new session, no wait)
-            p = subprocess.Popen(argv, cwd=str(Path(target).parent if Path(target).is_file() else Path(wow_exe).parent),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 start_new_session=True, env=env)
+            # detached: survives manager exit (no wait)
+            p = wplat.launch_detached(argv, Path(target).parent if Path(target).is_file() else Path(wow_exe).parent, env=env)
             self.launched.append({"pid": p.pid, "proc": p, "server": s["name"], "exe": target,
                                   "cmd": " ".join(argv),
                                   "started": datetime.now().strftime("%H:%M:%S")})

@@ -1,6 +1,11 @@
-# WoW Realmlist Manager — v4.0.0
+# WoW Realmlist Manager — v4.5.0
 
-A Linux clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client via Wine — without hand-editing config files.
+A cross-platform clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client — without hand-editing config files.
+
+## What's new in 4.5.0
+
+- **Windows support:** the app now runs on Windows, Linux and macOS (all launch/process/folder-open differences live in `wow_platform.py`). On Windows, `WoW.exe` starts directly; Wine-only settings (`WINEPREFIX`) are greyed out in Settings.
+- **Windows quick start:** install stock Python 3.10+, double-click `run.bat` (Tk version, no extra deps). The GTK version needs MSYS2 (`mingw-w64-x86_64-gtk4`, `mingw-w64-x86_64-python-gobject`).
 
 ## What's new in 4.0.0
 
@@ -15,23 +20,18 @@ A Linux clone of the classic **"Realmlist modifier"** tool for World of Warcraft
 
 ## What's new in 2.1.0
 
-- **Windowed-mode startup:** per-server `Start in windowed mode` checkbox (Additional settings) plus a global `Start windowed by default` fallback in ⚙ Settings. On Play, `SET gxWindow "1"` is written into the client's `WTF/Config.wtf` (created if missing); when off, your existing `gxWindow` value is left untouched.
+- **Windowed-mode startup:** per-server `Start in windowed mode` checkbox (Additional settings) plus a global `Start windowed by default` fallback in Settings. On Play, `SET gxWindow "1"` is written into the client's `WTF/Config.wtf` (created if missing); when off, your existing `gxWindow` value is left untouched.
 - Details grid and ⓘ dialog show the resolved `Windowed: Yes/No` state.
 
-## What's new in 2.0.0
+## Screenshots
 
-- **Multi-client:** named WoW installs per version (`1.12.1` / `2.4.3` / `3.3.5a`) in ⚙ Settings; each server picks a client from a dropdown (auto-assigned by `server_type`).
-- **Per-client launchers:** each client has its own launcher command, `WINEPREFIX` and extra args, with global defaults as fallback.
-- **Per-client realmlist lookup:** `Locate realmlist` buttons in Settings and in Add/Edit server show exactly which `realmlist.wtf` file(s) Play will update.
-- **Details grid** now shows the resolved `WoW client` and `Launcher` per server.
+![Main window 4.5.0 — server list, details grid with WoW client and Launcher rows](assets/Mainapp.png)
 
-![Main window 2.0.0 — WoW client and Launcher rows in the details grid](assets/Mainapp.png)
+![Settings 4.5.0 — three WoW profiles (1.12.1 / 2.4.3 / 3.3.5a), one WoW.exe each](assets/Settings.png)
 
-![Settings 2.0.0 — WoW clients with per-version launchers](assets/Settings.png)
+![Edit server 4.5.0 — Basic settings with client version picker](assets/Server%20edit.png)
 
-![Edit server 2.0.0 — Basic settings](assets/Server%20edit.png)
-
-![Edit server 2.0.0 — Additional settings with WoW client dropdown and Locate realmlist](assets/Server%20additional%20settings.png)
+![Edit server 4.5.0 — Additional settings](assets/Server%20additional%20settings.png)
 
 ## Screenshot overview
 
@@ -41,12 +41,12 @@ What you're looking at, top to bottom:
 
 | Area | What it does |
 |---|---|
-| Title bar `Ⓦ Realmlist modifier` + `⚙` / `AddOns` buttons | `⚙` opens global Settings (WoW.exe path, timeouts). `AddOns` opens the AddOns manager for the selected server's client. |
-| Server list (gold box) | Your servers. The colored dot is the status: 🟢 online, 🔴 offline, ⚪ unknown/checking. Click to select, double-click (or ▶ Play) to launch. Drag rows to reorder. |
-| `Status: Online / Ping: 107ms` + `⟳` / `ⓘ` | Result of the last TCP status check. `⟳` re-checks all servers, `ⓘ` shows the selected server's info (type, site, notes). |
-| `▶ Play` + `+ – /` | `▶ Play` writes the realmlist and launches WoW. `+` adds, `–` removes, `✓` edits a server. |
-| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Windowed`, `Uses preloader`, `Automatic cache clearing`) | Shows the selected server's resolved config. |
-| `Launched by manager` + `Kill` / `Force kill` | PIDs this app launched (detached, so they survive manager exit). `Kill` = SIGTERM, `Force kill` = SIGKILL. Dead PIDs are pruned automatically every 2 s. |
+| Title bar `Ⓦ Realmlist modifier` + `⚙` / `AddOns` buttons | `⚙` opens Settings (3 WoW profiles, launcher, timeouts). `AddOns` opens the AddOns manager for the selected server's profile. |
+| Server list (gold box) | Your servers. The colored dot is the status: 🟢 online, 🔴 offline, ⚪ unknown/checking. Click to select, double-click (or ▶ Play) to launch. Drag rows to reorder. Hover a row for its profile version + exe path. |
+| `Status: Online / Ping: 107ms` + `⟳` / `ⓘ` | Result of the last TCP status check. `⟳` re-checks all servers, `ⓘ` shows the selected server's info (type, profile, exe, launch command, realmlist files, site, notes). |
+| `▶ Play` + `+ – ✓` | `▶ Play` writes the realmlist and launches WoW. If the server's version has no `WoW.exe` set, Play offers to pick it now and saves it. `+` adds, `–` removes, `✓` edits a server. |
+| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Windowed`, `Uses preloader`, `Automatic cache clearing`, `Account`) | Shows the selected server's resolved config. `WoW client` shows the profile version, or `(not set)` / `(missing!)` when the path needs attention. |
+| `Launched by manager` + `Kill` / `Force kill` | PIDs this app launched (detached, so they survive manager exit). `Kill` = graceful terminate, `Force kill` = force. Dead PIDs are pruned automatically every 2 s. |
 
 ## Features
 
@@ -56,22 +56,22 @@ What you're looking at, top to bottom:
 - Per-profile realmlist lookup: `Locate realmlist` in Settings shows exactly which `realmlist.wtf` file(s) Play will update
 - Windowed-mode startup per server (`windowed`) with a global `default_windowed` fallback — writes `SET gxWindow "1"` on Play, never forces fullscreen
 - Add / edit / remove servers: Basic tab (name, address, account, client version) + Additional tab (own patchlist, preloader, auto cache clear, windowed mode, RSS, site, info)
-- Global Settings: 3 WoW profiles (one `WoW.exe` per version), launcher / `WINEPREFIX` / args, run-an-extra-program with WoW, connection timeout
+- Global Settings: 3 WoW profiles (one `WoW.exe` per version), launcher (wine on Linux/macOS, direct start on Windows) / `WINEPREFIX` (greyed out on Windows) / args, run-an-extra-program with WoW, connection timeout
 - AddOns manager: enable/disable (`.disabled` rename), delete, install from `.zip` (zip-slip protected), open folder
-- Instance tracker: detached `Popen(start_new_session=True)` launches, liveness via `poll()`/`/proc`, SIGTERM/SIGKILL buttons
+- Instance tracker: detached launches (survive manager exit), liveness via `poll()`/`/proc`, Kill / Force kill buttons (`taskkill` on Windows)
 - Drag-to-reorder server list, persisted to `servers.json`
-- Zero third-party Python deps (stdlib + GTK4 **or** Tkinter)
+- Zero third-party Python deps (stdlib + GTK4 **or** Tkinter); all OS differences isolated in `wow_platform.py`
 
 ## Requirements
 
-- Linux + Python 3.10+
-- **GTK app (default):** `python3-gi` + GTK4
+- Python 3.10+
+- **GTK app (default on Linux):** `python3-gi` + GTK4
   ```bash
   # Debian / Ubuntu
   sudo apt install python3-gi gir1.2-gtk-4.0 wine
   ```
-- **Tk app (legacy fallback):** `python3-tk`
-- `wine` to actually run `WoW.exe`, `xdg-open` for "Open folder", `pgrep` for extra-program detection
+- **Tk app (default on Windows, fallback everywhere):** stock Python — `python3-tk` on Linux, included with python.org installers on Windows/macOS
+- To actually run `WoW.exe`: `wine` on Linux/macOS (nothing extra on Windows), `xdg-open` for "Open folder" on Linux, `pgrep`/`tasklist` for extra-program detection
 
 ## Download (recommended)
 
@@ -96,15 +96,18 @@ Plus `wine` to actually launch `WoW.exe`.
 git clone https://github.com/nicthegarden/wow-manager.git
 cd wow-manager
 
-# GTK version (recommended)
+# Linux: GTK version (recommended)
 ./run.sh
 # or: python3 realmlist_manager_gtk.py
 
-# Tkinter version (legacy, no GTK needed)
+# Windows: double-click run.bat, or:
+py realmlist_manager.py
+
+# Tkinter version (no GTK needed, same 3 profiles)
 python3 realmlist_manager.py
 ```
 
-First run auto-creates `servers.json` next to the script with safe defaults. Then open **⚙ Settings** and point **Path to WoW.exe** at your client. To start from the shipped example:
+First run auto-creates `servers.json` next to the script with safe defaults (OctoWoW, FrozenThrone, Warmane). Then open **⚙ Settings** and set the `WoW.exe` for each version you play (`1.12.1`, `2.4.3`, `3.3.5a`). To start from the shipped example:
 
 ```bash
 cp servers.example.json servers.json
@@ -115,7 +118,7 @@ cp servers.example.json servers.json
 1. **Settings:** set your 3 WoW profiles once — one `WoW.exe` per version (`1.12.1`, `2.4.3`, `3.3.5a`). Use `Locate realmlist` to verify which files a profile writes.
 2. **Add server (+):** name + address (e.g. `logon.example.com`) + client version (picks the profile). Use the Additional tab for patchlist / preloader / windowed mode / auto cache clear.
 3. **Select:** status, ping and the details grid update. `⟳` re-pings everything without blocking the UI.
-4. **Play (▶):** writes configs (see below) and launches with Wine. Use **AddOns** beforehand to set up mods.
+4. **Play (▶):** writes configs (see below) and launches with Wine. If the profile for the server's version isn't set, Play asks you to pick the `WoW.exe` first. Use **AddOns** beforehand to set up mods.
 5. **Instances:** after Play, the PID appears under "Launched by manager". `Kill` / `Force kill` stops it.
 
 ## How it works
@@ -127,7 +130,7 @@ cp servers.example.json servers.json
 - First run: built from `DEFAULT_SERVERS` + `DEFAULT_SETTINGS`; known install locations (`KNOWN_PROFILE_PATHS`) pre-fill empty profile slots, and a `WoW.exe` next to the script is picked up into the first empty slot. Legacy `clients` / `wow_exe` / per-server paths migrate into the matching profile.
 - Every add/edit/delete/reorder calls `save_data()` (GTK) / `save_servers()` (Tk) immediately. The file is **git-ignored** — never commit your real one.
 - Profile resolution: `effective_wow_exe(server, settings)` returns `settings.profiles[server.server_type]`. If it is missing on Play, the app asks you to pick the `WoW.exe` and saves it.
-- Launcher resolution: `effective_launch(server, settings)` returns the global `default_launcher` / `default_wineprefix` / `default_args` (one launcher for all profiles).
+- Launcher resolution: `effective_launch(server, settings)` returns the global `default_launcher` / `default_wineprefix` / `default_args`. Blank launcher = OS default (`wine` on Linux/macOS, direct start on Windows); `WINEPREFIX` is ignored on Windows.
 - Windowed resolution: `effective_windowed(server, settings)` — per-server `windowed` OR global `default_windowed`.
 
 ### Status check (non-blocking)
@@ -137,7 +140,7 @@ cp servers.example.json servers.json
 
 ### Play: writing the realmlist
 
-`write_realmlist(wow_exe, address, patchlist)`:
+`write_realmlist(wow_exe, address, patchlist="", account="", windowed=False)`:
 
 1. Resolve the client dir: parent of `WoW.exe` (or the dir itself if a folder was given).
 2. Find **every** `realmlist.wtf` under it via case-insensitive `rglob` — covers 1.12 (`<wow>/realmlist.wtf`) and 2.x/3.x (`Data/<locale>/realmlist.wtf`) without hardcoding a layout. Falls back to `<wow>/realmlist.wtf` if none exist yet.
@@ -147,20 +150,21 @@ cp servers.example.json servers.json
 
 ### Play: launching
 
-- Extra program first (if `run_extra` + `extra_path`; skipped when `extra_skip_if_running` and `pgrep` finds it).
-- Then `subprocess.Popen(argv, cwd=<client dir>, start_new_session=True, stdio→DEVNULL)` where `argv = build_launch_cmd(target, launcher, args)` (launcher + extra args + exe, `shlex`-split) and `target` is the preloader exe when `uses_preloader`, else `WoW.exe`. `WINEPREFIX` is set in the child env only when configured. Detached on purpose: WoW **survives** manager exit.
+- Extra program first (if `run_extra` + `extra_path`; skipped when `extra_skip_if_running` and the process is found via `pgrep`/`tasklist`).
+- Then a detached launch (`wow_platform.launch_detached`: new session on Linux/macOS, `DETACHED_PROCESS` on Windows) where `argv = build_launch_cmd(target, launcher, args)` and `target` is the preloader exe when `uses_preloader`, else `WoW.exe`. `WINEPREFIX` is set in the child env only when configured and supported. Detached on purpose: WoW **survives** manager exit.
 - Each launch appends `{"pid", "proc", "server", "exe", "started"}` to `self.launched`; `refresh_instances()` (every 2 s) drops entries whose `proc.poll()` is not `None` (or `pid_alive()` via `os.kill(pid, 0)`), so the list never fills with zombies.
 
 ### AddOns manager
 
 - Lists `<wow>/Interface/AddOns/*/`: folder name, `## Title:` / `## Version:` from the `.toc` (WoW `|c...|r` color codes stripped). Folders ending in `.disabled` show as disabled.
-- **Disable/Enable** = rename with/without `.disabled`. **Delete** = `shutil.rmtree` after confirm. **Install from .zip** extracts with zip-slip protection (`resolve()` must stay under `AddOns/`). **Open folder** = `xdg-open`.
+- **Disable/Enable** = rename with/without `.disabled`. **Delete** = `shutil.rmtree` after confirm. **Install from .zip** extracts with zip-slip protection (`resolve()` must stay under `AddOns/`). **Open folder** = file manager (`xdg-open` / `open` / Explorer).
 
 ### Server fields
 
 | Field | Meaning |
 |---|---|
 | `name` / `address` | Display name + realmlist host (`logon.example.com`). |
+| `account` | Optional account name, written as `SET accountName` on Play. |
 | `own_patchlist` / `patchlist` | When true, also writes `set patchlist`. |
 | `uses_preloader` / `preloader` | Launch this exe instead of `WoW.exe` (custom loaders). |
 | `server_type` | One of `1.12.1`, `2.4.3`, `3.3.5a` — picks which of the 3 profiles Play uses. |
@@ -171,7 +175,7 @@ cp servers.example.json servers.json
 | Setting | Meaning |
 |---|---|
 | `profiles` | The 3 fixed WoW installs: `{1.12.1, 2.4.3, 3.3.5a}` → `WoW.exe` path each. |
-| `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (`wine` by default), `WINEPREFIX` and extra args used for every profile. |
+| `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (blank = `wine` on Linux/macOS, direct start on Windows), `WINEPREFIX` (Wine-only, greyed out on Windows) and extra args used for every profile. |
 | `default_windowed` | Start windowed unless the server says otherwise. |
 | `run_extra` / `extra_path` / `extra_skip_if_running` | Launch another program alongside WoW. |
 | `timeout_ms` | Status-check TCP timeout (500–15000). |
@@ -190,8 +194,10 @@ cp wow-manager.desktop ~/.local/share/applications/
 | File | What it is |
 |---|---|
 | `realmlist_manager_gtk.py` | Main app (GTK4, default via `run.sh`) |
-| `realmlist_manager.py` | Legacy Tkinter version |
+| `realmlist_manager.py` | Tkinter version (default on Windows via `run.bat`) |
+| `wow_platform.py` | OS layer: launch, kill, process check, folder open, per-OS paths (stdlib only) |
 | `run.sh` | `cd $(dirname $0) && exec python3 realmlist_manager_gtk.py` |
+| `run.bat` | Windows double-click launcher for the Tk version |
 | `servers.example.json` | Example config — copy to `servers.json` |
 | `servers.json` | Your local config — auto-created, **git-ignored** |
 | `wow-manager.desktop` | Desktop entry |
