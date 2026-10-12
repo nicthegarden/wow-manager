@@ -14,14 +14,16 @@ What you're looking at, top to bottom:
 | Server list (gold box) | Your servers. The colored dot is the status: 🟢 online, 🔴 offline, ⚪ unknown/checking. Click to select, double-click (or ▶ Play) to launch. Drag rows to reorder. |
 | `Status: Online / Ping: 107ms` + `⟳` / `ⓘ` | Result of the last TCP status check. `⟳` re-checks all servers, `ⓘ` shows the selected server's info (type, site, notes). |
 | `▶ Play` + `+ – /` | `▶ Play` writes the realmlist and launches WoW. `+` adds, `–` removes, `✓` edits a server. |
-| Details grid (`Server address`, `Realmlist`, `Patchlist`, `Alternative WoW path`, `Uses preloader`, `Automatic cache clearing`) | Shows the selected server's resolved config. |
+| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Uses preloader`, `Automatic cache clearing`) | Shows the selected server's resolved config. |
 | `Launched by manager` + `Kill` / `Force kill` | PIDs this app launched (detached, so they survive manager exit). `Kill` = SIGTERM, `Force kill` = SIGKILL. Dead PIDs are pruned automatically every 2 s. |
 
 ## Features
 
 - Server list with online/offline dot (TCP connect to port 3724) + ping in ms
-- One-click **Play**: writes every `realmlist.wtf`, patches `WTF/Config.wtf`, optionally clears `WDB`, launches via `wine`
-- Add / edit / remove servers: Basic tab (name, address) + Additional tab (own patchlist, preloader, alternative WoW path, auto cache clear, server type, RSS, site, info)
+- One-click **Play**: writes every `realmlist.wtf`, patches `WTF/Config.wtf`, optionally clears `WDB`, launches via the client's launcher
+- Multi-client: named WoW installs per version (`1.12.1` / `2.4.3` / `3.3.5a`) in ⚙ Settings; each server picks a client from a dropdown (auto-assigned by `server_type` on first run). Each client has its own launcher, `WINEPREFIX` and extra args.
+- Per-client realmlist lookup: `Locate realmlist` in Settings (selected client) and in Add/Edit server shows exactly which `realmlist.wtf` file(s) Play will update
+- Add / edit / remove servers: Basic tab (name, address) + Additional tab (own patchlist, preloader, alternative WoW path, WoW client, auto cache clear, server type, RSS, site, info)
 - Global Settings: `WoW.exe` path (auto-detects `WoW.exe` next to the script), run-an-extra-program with WoW, connection timeout
 - AddOns manager: enable/disable (`.disabled` rename), delete, install from `.zip` (zip-slip protected), open folder
 - Instance tracker: detached `Popen(start_new_session=True)` launches, liveness via `poll()`/`/proc`, SIGTERM/SIGKILL buttons
@@ -78,8 +80,8 @@ cp servers.example.json servers.json
 
 ## Usage
 
-1. **Settings (⚙):** set `WoW.exe` once. If a `WoW.exe` sits next to the script it's picked up automatically.
-2. **Add server (+):** name + address (e.g. `logon.example.com`). Use the Additional tab for patchlist / preloader / per-server WoW path.
+1. **Settings (⚙):** set your WoW clients once — one entry per install (e.g. Vanilla `1.12.1`, TBC `2.4.3`, WotLK `3.3.5a`), each with its own launcher / `WINEPREFIX` / args. If a `WoW.exe` sits next to the script it's picked up automatically. Use `Locate realmlist` to verify which files a client writes.
+2. **Add server (+):** name + address (e.g. `logon.example.com`). Use the Additional tab for patchlist / preloader / WoW client / per-server WoW path. `Locate realmlist` there previews the files Play will touch.
 3. **Select:** status, ping and the details grid update. `⟳` re-pings everything without blocking the UI.
 4. **Play (▶):** writes configs (see below) and launches with Wine. Use **AddOns** beforehand to set up mods.
 5. **Instances:** after Play, the PID appears under "Launched by manager". `Kill` / `Force kill` stops it.
@@ -90,9 +92,10 @@ cp servers.example.json servers.json
 
 - Location: same folder as the script (`APP_DIR / "servers.json"`).
 - Shape: `{"servers": [...], "settings": {...}}` — see `servers.example.json`.
-- First run: built from `DEFAULT_SERVERS` + `DEFAULT_SETTINGS`; if a `WoW.exe` is found next to the script (`autodetect_wow_exe()`, case-insensitive), it's stored as `settings.wow_exe`.
+- First run: built from `DEFAULT_SERVERS` + `DEFAULT_SETTINGS`; if a `WoW.exe` is found next to the script (`autodetect_wow_exe()`, case-insensitive), it's stored as `settings.wow_exe`. Known install locations (`KNOWN_CLIENT_PATHS`) are probed to pre-fill the clients list, and servers without an explicit client are auto-assigned by matching `server_type` to a client `version`.
 - Every add/edit/delete/reorder calls `save_data()` (GTK) / `save_servers()` (Tk) immediately. The file is **git-ignored** — never commit your real one.
-- Per-server WoW path wins: `effective_wow_exe(server, settings)` returns `server.wow_path` when `alt_wow` is set, else the global `settings.wow_exe`.
+- Per-server WoW path wins: `effective_wow_exe(server, settings)` returns `server.wow_path` when `alt_wow` is set, else the named client's `path` (`server.client`), else the global `settings.wow_exe`.
+- Launcher resolution: `effective_launch(server, settings)` returns `(launcher, wineprefix, args)` — per-client fields win, blanks fall back to `default_launcher` / `default_wineprefix` / `default_args`.
 
 ### Status check (non-blocking)
 
@@ -112,7 +115,7 @@ cp servers.example.json servers.json
 ### Play: launching
 
 - Extra program first (if `run_extra` + `extra_path`; skipped when `extra_skip_if_running` and `pgrep` finds it).
-- Then `subprocess.Popen(["wine", target], cwd=<client dir>, start_new_session=True, stdio→DEVNULL)` where `target` is the preloader exe when `uses_preloader`, else `WoW.exe`. Detached on purpose: WoW **survives** manager exit.
+- Then `subprocess.Popen(argv, cwd=<client dir>, start_new_session=True, stdio→DEVNULL)` where `argv = build_launch_cmd(target, launcher, args)` (launcher + extra args + exe, `shlex`-split) and `target` is the preloader exe when `uses_preloader`, else `WoW.exe`. `WINEPREFIX` is set in the child env only when configured. Detached on purpose: WoW **survives** manager exit.
 - Each launch appends `{"pid", "proc", "server", "exe", "started"}` to `self.launched`; `refresh_instances()` (every 2 s) drops entries whose `proc.poll()` is not `None` (or `pid_alive()` via `os.kill(pid, 0)`), so the list never fills with zombies.
 
 ### AddOns manager
@@ -127,14 +130,17 @@ cp servers.example.json servers.json
 | `name` / `address` | Display name + realmlist host (`logon.example.com`). |
 | `own_patchlist` / `patchlist` | When true, also writes `set patchlist`. |
 | `uses_preloader` / `preloader` | Launch this exe instead of `WoW.exe` (custom loaders). |
-| `alt_wow` / `wow_path` | Per-server client path, overrides global `wow_exe`. |
+| `alt_wow` / `wow_path` | Per-server client path, overrides the client choice and global `wow_exe`. |
+| `client` | Named client from Settings (`settings.clients`), e.g. `Vanilla 1.12`. Blank = default (first client). |
 | `auto_clear` | Clear `WDB` on every Play for this server. |
 | `server_type` | Label only (`...`, `1.12.1`, `2.4.3`, `3.3.5a`). |
 | `rss` / `site` / `info` | Shown in the ⓘ info dialog; `site` has a Visit button. |
 
 | Setting | Meaning |
 |---|---|
-| `wow_exe` | Global client path. |
+| `wow_exe` | Global client path (legacy fallback). |
+| `clients` | Named WoW installs: `{name, version, path, launcher, wineprefix, args}`. Blank launcher fields use the defaults below. |
+| `default_launcher` / `default_wineprefix` / `default_args` | Launcher command (`wine` by default), `WINEPREFIX` and extra args used when a client leaves them blank. |
 | `run_extra` / `extra_path` / `extra_skip_if_running` | Launch another program alongside WoW. |
 | `timeout_ms` | Status-check TCP timeout (500–15000). |
 | `save_window_pos` / `check_updates` | Parity options kept from the original tool. |
