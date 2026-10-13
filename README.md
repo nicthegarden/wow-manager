@@ -193,14 +193,20 @@ cp servers.example.json servers.json
 
 ## Desktop integration
 
-`wow-manager.desktop` runs `run.sh` from its own folder, so it works wherever you clone the repo:
+`org.wow.realmlist.desktop` runs `run.sh` from its own folder, so it works wherever you clone the repo.
+The filename must stay `org.wow.realmlist` — on Wayland the compositor matches the
+window to the desktop file by app-id, and that match is what gives the window its
+taskbar/dock icon (`Icon=wow-manager` + `StartupWMClass` cover X11):
 
 ```bash
-cp wow-manager.desktop ~/.local/share/applications/
+# remove the old name if you installed it before (it breaks the Wayland match):
+rm -f ~/.local/share/applications/wow-manager.desktop
+cp org.wow.realmlist.desktop ~/.local/share/applications/
 # taskbar/dock icon for the .desktop entry:
 mkdir -p ~/.local/share/icons/hicolor/256x256/apps
 convert icon.png -resize 256x256 ~/.local/share/icons/hicolor/256x256/apps/wow-manager.png
 gtk-update-icon-cache -f ~/.local/share/icons/hicolor 2>/dev/null || true
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
 ```
 
 ## Files
@@ -214,7 +220,7 @@ gtk-update-icon-cache -f ~/.local/share/icons/hicolor 2>/dev/null || true
 | `run.bat` | Windows double-click launcher for the Tk version |
 | `servers.example.json` | Example config — copy to `servers.json` |
 | `servers.json` | Your local config — auto-created, **git-ignored** |
-| `wow-manager.desktop` | Desktop entry |
+| `org.wow.realmlist.desktop` | Desktop entry (name must match the GTK app-id for the Wayland icon) |
 | `icon.png` / `icon.ico` | App icon (window + taskbar, loaded at runtime; `.ico` for Windows builds) |
 | `docs/screenshot.png` | Screenshot used above |
 
