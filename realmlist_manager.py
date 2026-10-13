@@ -178,6 +178,13 @@ class App(tk.Tk):
         self.servers, self.profiles = load_servers()
         self.statuses = {}  # name -> (online, ms)
         self.title("Realmlist modifier")
+        try:
+            _ic = APP_DIR / "icon.png"
+            if _ic.is_file():
+                self._icon_img = tk.PhotoImage(file=str(_ic))
+                self.wm_iconphoto(True, self._icon_img)
+        except Exception:
+            pass
         self.configure(bg=BG)
         self.geometry("300x430")
         self.resizable(False, False)

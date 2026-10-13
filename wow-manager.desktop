@@ -2,6 +2,8 @@
 Name=WoW Realmlist Manager
 Comment=Manage WoW private server realmlists on Linux
 Exec=bash -c 'cd "$(dirname "%k")" && ./run.sh'
+Icon=wow-manager
+StartupWMClass=org.wow.realmlist
 Type=Application
 Categories=Game;
 Terminal=false

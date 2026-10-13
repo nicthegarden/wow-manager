@@ -1076,6 +1076,18 @@ class App(Gtk.Application):
         GLib.timeout_add_seconds(2, self.refresh_instances)
 
         win.present()
+        try:
+            _ic = APP_DIR / "icon.png"
+            if _ic.is_file():
+                gi.require_version("GdkPixbuf", "2.0")
+                from gi.repository import GdkPixbuf
+                _pix = GdkPixbuf.Pixbuf.new_from_file(str(_ic))
+                _tex = Gdk.Texture.new_for_pixbuf(_pix)
+                _surf = win.get_surface()
+                if _surf is not None and hasattr(_surf, "set_icon_list"):
+                    _surf.set_icon_list([_tex])
+        except Exception:
+            pass
         self.win = win
 
     # ---- list ----

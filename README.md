@@ -197,6 +197,10 @@ cp servers.example.json servers.json
 
 ```bash
 cp wow-manager.desktop ~/.local/share/applications/
+# taskbar/dock icon for the .desktop entry:
+mkdir -p ~/.local/share/icons/hicolor/256x256/apps
+convert icon.png -resize 256x256 ~/.local/share/icons/hicolor/256x256/apps/wow-manager.png
+gtk-update-icon-cache -f ~/.local/share/icons/hicolor 2>/dev/null || true
 ```
 
 ## Files
@@ -211,6 +215,7 @@ cp wow-manager.desktop ~/.local/share/applications/
 | `servers.example.json` | Example config — copy to `servers.json` |
 | `servers.json` | Your local config — auto-created, **git-ignored** |
 | `wow-manager.desktop` | Desktop entry |
+| `icon.png` / `icon.ico` | App icon (window + taskbar, loaded at runtime; `.ico` for Windows builds) |
 | `docs/screenshot.png` | Screenshot used above |
 
 ## Contributing
