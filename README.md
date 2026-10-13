@@ -1,6 +1,11 @@
-# WoW Realmlist Manager — v4.5.2
+# WoW Realmlist Manager — v4.5.3
 
 A cross-platform clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client — without hand-editing config files.
+
+## What's new in 4.5.3
+
+- **Proper app icon:** `icon.png` is now the window/taskbar icon at runtime (Tk via `wm_iconphoto`, GTK via the X11 icon list), with `icon.ico` generated for Windows builds.
+- **Wayland icon fix:** the desktop entry is now named `org.wow.realmlist.desktop` to match the GTK app-id — that's how Wayland compositors (e.g. GNOME) match a window to its taskbar/dock icon. `Icon=wow-manager` + `StartupWMClass` cover X11. See Desktop integration for the install steps.
 
 ## What's new in 4.5.2
 

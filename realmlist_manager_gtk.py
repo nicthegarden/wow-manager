@@ -23,7 +23,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "4.5.2"
+APP_VERSION = "4.5.3"
 
 DEFAULT_SETTINGS = {
     "profiles": {"1.12.1": "", "2.4.3": "", "3.3.5a": ""},
