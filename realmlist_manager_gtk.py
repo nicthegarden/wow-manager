@@ -23,7 +23,7 @@ from gi.repository import Gtk, GLib, Pango, Gdk
 APP_DIR = Path(__file__).parent
 CONFIG_FILE = APP_DIR / "servers.json"
 
-APP_VERSION = "4.5.1"
+APP_VERSION = "4.5.2"
 
 DEFAULT_SETTINGS = {
     "profiles": {"1.12.1": "", "2.4.3": "", "3.3.5a": ""},
@@ -59,16 +59,16 @@ PROFILE_LABELS = {
 DEFAULT_SERVERS = [
     {"name": "OctoWoW", "address": "play.octowow.st",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "windowed": False, "auto_clear": False,
-     "server_type": "1.12.1", "rss": "", "site": "https://octowow.st", "info": ""},
+     "windowed": False, "auto_clear": False, "extra_path": "",
+     "server_type": "1.12.1", "site": "https://octowow.st", "info": ""},
     {"name": "FrozenThrone", "address": "frozenthrone.co",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "windowed": False, "auto_clear": False,
-     "server_type": "3.3.5a", "rss": "", "site": "https://frozenthrone.co", "info": ""},
+     "windowed": False, "auto_clear": False, "extra_path": "",
+     "server_type": "3.3.5a", "site": "https://frozenthrone.co", "info": ""},
     {"name": "Warmane", "address": "logon.warmane.com",
      "own_patchlist": False, "patchlist": "", "uses_preloader": False, "preloader": "",
-     "windowed": False, "auto_clear": False,
-     "server_type": "3.3.5a", "rss": "", "site": "https://warmane.com", "info": ""},
+     "windowed": False, "auto_clear": False, "extra_path": "",
+     "server_type": "3.3.5a", "site": "https://warmane.com", "info": ""},
 ]
 
 CSS = """
@@ -127,9 +127,11 @@ def load_data():
                     if not (settings["profiles"].get(v) or "").strip() and d["profiles"].get(v):
                         settings["profiles"][v] = d["profiles"][v]
             _ensure_profiles(servers, settings)
-            # fill missing per-server keys for forward compat
+            # fill missing per-server keys for forward compat, drop the dead rss field
             for s in servers:
                 s.setdefault("windowed", False)
+                s.setdefault("extra_path", "")
+                s.pop("rss", None)
             save_data(servers, settings)
             return servers, settings
         except Exception:
@@ -748,6 +750,15 @@ class ServerDialog(Gtk.Dialog):
         hb.append(self.e_pre); hb.append(b_pre)
         adv.append(hb)
 
+        adv.append(dim_label("Launch before WoW (optional, e.g. controller mapper):"))
+        hb_extra = Gtk.Box(spacing=6)
+        self.e_extra = Gtk.Entry(hexpand=True, placeholder_text="e.g. /path/to/WoWPadX")
+        self.e_extra.set_text(s.get("extra_path", ""))
+        b_extra = Gtk.Button(label="Search...")
+        b_extra.connect("clicked", lambda *a: self.pick(self.e_extra))
+        hb_extra.append(self.e_extra); hb_extra.append(b_extra)
+        adv.append(hb_extra)
+
         self.c_cache = Gtk.CheckButton(label="Automatic cache (WDB) clearing")
         self.c_cache.set_active(s.get("auto_clear", False))
         adv.append(self.c_cache)
@@ -758,19 +769,16 @@ class ServerDialog(Gtk.Dialog):
 
         grid = Gtk.Grid(column_spacing=6, row_spacing=6)
         adv.append(grid)
-        grid.attach(dim_label("Server RSS channel:"), 0, 0, 1, 1)
-        self.e_rss = Gtk.Entry(hexpand=True); self.e_rss.set_text(s.get("rss", ""))
-        grid.attach(self.e_rss, 1, 0, 1, 1)
-        grid.attach(dim_label("Server site:"), 0, 1, 1, 1)
+        grid.attach(dim_label("Server site:"), 0, 0, 1, 1)
         self.e_site = Gtk.Entry(hexpand=True); self.e_site.set_text(s.get("site", ""))
         b_visit = Gtk.Button(label="Visit")
         b_visit.connect("clicked", lambda *a: webbrowser.open(self.e_site.get_text()) if self.e_site.get_text() else None)
         hb3 = Gtk.Box(spacing=6)
         hb3.append(self.e_site); hb3.append(b_visit)
-        grid.attach(hb3, 1, 1, 1, 1)
-        grid.attach(dim_label("Additional info:"), 0, 2, 1, 1)
+        grid.attach(hb3, 1, 0, 1, 1)
+        grid.attach(dim_label("Additional info:"), 0, 1, 1, 1)
         self.e_info = Gtk.Entry(hexpand=True); self.e_info.set_text(s.get("info", ""))
-        grid.attach(self.e_info, 1, 2, 1, 1)
+        grid.attach(self.e_info, 1, 1, 1, 1)
 
     def pick(self, entry):
         d = Gtk.FileChooserDialog(title="Select file", transient_for=self, action=Gtk.FileChooserAction.OPEN)
@@ -790,7 +798,7 @@ class ServerDialog(Gtk.Dialog):
             "windowed": self.c_win.get_active(),
             "auto_clear": self.c_cache.get_active(),
             "server_type": PROFILE_VERSIONS[self.e_type.get_selected()],
-            "rss": self.e_rss.get_text().strip(),
+            "extra_path": self.e_extra.get_text().strip(),
             "site": self.e_site.get_text().strip(),
             "info": self.e_info.get_text().strip(),
         }
@@ -1036,7 +1044,7 @@ class App(Gtk.Application):
                                           ("patchlist", "Patchlist:"), ("altpath", "WoW client:"),
                                           ("launcher", "Launcher:"), ("windowed", "Windowed:"),
                                           ("preloader", "Uses preloader/C-D:"), ("cache", "Automatic cache clearing"),
-                                          ("account", "Account:")]):
+                                          ("extra", "Extra program:"), ("account", "Account:")]):
             k = Gtk.Label(label=label, halign=Gtk.Align.START); k.add_css_class("dim")
             v = Gtk.Label(label="--", halign=Gtk.Align.END, hexpand=True)
             v.add_css_class("val"); v.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
@@ -1149,6 +1157,9 @@ class App(Gtk.Application):
         self.detail_labels["windowed"].set_text("Yes" if effective_windowed(s, self.settings) else "No")
         self.detail_labels["preloader"].set_text("Yes" if s.get("uses_preloader") else "No")
         self.detail_labels["cache"].set_text("Yes" if s.get("auto_clear") else "No")
+        xp = (s.get("extra_path") or "").strip()
+        self.detail_labels["extra"].set_text(Path(xp).name if xp else "---")
+        self.detail_labels["extra"].set_tooltip_text(xp)
         self.detail_labels["account"].set_text(s.get("account", "") or "---")
         on, ms = self.statuses.get(s["name"], (None, None))
         if on is None:
@@ -1246,7 +1257,8 @@ class App(Gtk.Application):
         rl = "\n".join(str(p) for p in files[:4]) or "(profile not set)"
         text = (f"{s['name']}\nAddress: {s.get('address')}\nType: {s.get('server_type')}\n"
                 f"Client: {describe_client(s, self.settings)}\nExe: {exe}\nLaunch: {describe_launch(s, self.settings)}\n"
-                f"Windowed: {'Yes' if effective_windowed(s, self.settings) else 'No'}\nRealmlist files:\n{rl}\n"
+                f"Windowed: {'Yes' if effective_windowed(s, self.settings) else 'No'}\n"
+                f"Extra program: {(s.get('extra_path') or '').strip() or '---'}\nRealmlist files:\n{rl}\n"
                 f"Site: {s.get('site')}\nInfo: {s.get('info')}")
         show_message(win, Gtk.MessageType.INFO, text)
 
@@ -1285,6 +1297,34 @@ class App(Gtk.Application):
         q.connect("response", on_answer)
         q.present()
 
+    def _launch_extra(self, tag, xpath, skip_if_running=False,
+                      launcher="", wineprefix="", args=""):
+        """Start a helper program alongside WoW (detached, tracked).
+
+        On Linux/macOS a helper ending in .exe runs through the same
+        launcher/WINEPREFIX as WoW (e.g. wine); anything else (native
+        binaries, scripts, AppImages) starts directly.
+        """
+        if not (xpath or "").strip():
+            return
+        if skip_if_running and proc_running(Path(xpath).name):
+            return
+        try:
+            if Path(xpath).suffix.lower() == ".exe" and not wplat.IS_WINDOWS:
+                argv = wplat.build_argv(xpath, launcher, args)
+                env = None
+                if wineprefix and wplat.wineprefix_supported():
+                    env = dict(os.environ)
+                    env["WINEPREFIX"] = wineprefix
+                ep = wplat.launch_detached(argv, Path(xpath).parent, env=env)
+            else:
+                ep = wplat.launch_detached([xpath], Path(xpath).parent)
+            self.launched.append({"pid": ep.pid, "proc": ep,
+                                  "server": tag, "exe": xpath,
+                                  "started": datetime.now().strftime("%H:%M:%S")})
+        except Exception:
+            pass
+
     def play(self, win):
         s = self.current()
         if not s:
@@ -1309,18 +1349,19 @@ class App(Gtk.Application):
         if s.get("auto_clear"):
             clear_wdb(wow_exe)
         st = self.settings
-        if st.get("run_extra") and st.get("extra_path"):
-            if not (st.get("extra_skip_if_running") and proc_running(Path(st["extra_path"]).name)):
-                try:
-                    # detached: survives manager exit
-                    ep = wplat.launch_detached([st["extra_path"]], Path(st["extra_path"]).parent)
-                    self.launched.append({"pid": ep.pid, "proc": ep,
-                                          "server": f"{s['name']} (extra)", "exe": st["extra_path"],
-                                          "started": datetime.now().strftime("%H:%M:%S")})
-                except Exception:
-                    pass
-        target = s.get("preloader") if s.get("uses_preloader") and s.get("preloader") else wow_exe
         launcher, wineprefix, extra_args = effective_launch(s, st)
+        # 1. this server's own pre-launch program (e.g. controller mapper)
+        server_extra = (s.get("extra_path") or "").strip()
+        if server_extra:
+            self._launch_extra(f"{s['name']} (extra)", server_extra,
+                               skip_if_running=st.get("extra_skip_if_running", False),
+                               launcher=launcher, wineprefix=wineprefix, args=extra_args)
+        # 2. the global extra program (Settings), if any
+        if st.get("run_extra") and st.get("extra_path"):
+            self._launch_extra(f"{s['name']} (extra)", st["extra_path"],
+                               skip_if_running=st.get("extra_skip_if_running", False),
+                               launcher=launcher, wineprefix=wineprefix, args=extra_args)
+        target = s.get("preloader") if s.get("uses_preloader") and s.get("preloader") else wow_exe
         argv = build_launch_cmd(target, launcher, extra_args)
         env = None
         if wineprefix and wplat.wineprefix_supported():

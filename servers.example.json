@@ -10,9 +10,9 @@
       "windowed": false,
       "auto_clear": false,
       "server_type": "1.12.1",
-      "rss": "",
       "site": "https://octowow.st",
-      "info": ""
+      "info": "",
+      "extra_path": ""
     },
     {
       "name": "FrozenThrone",
@@ -24,9 +24,9 @@
       "windowed": false,
       "auto_clear": false,
       "server_type": "3.3.5a",
-      "rss": "",
       "site": "https://frozenthrone.co",
-      "info": ""
+      "info": "",
+      "extra_path": ""
     },
     {
       "name": "Warmane",
@@ -38,9 +38,9 @@
       "windowed": false,
       "auto_clear": false,
       "server_type": "3.3.5a",
-      "rss": "",
       "site": "https://warmane.com",
-      "info": ""
+      "info": "",
+      "extra_path": ""
     }
   ],
   "settings": {

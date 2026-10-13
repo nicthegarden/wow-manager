@@ -86,6 +86,7 @@ def load_servers():
                     s.setdefault("server_type", "3.3.5a")
                     if s.get("server_type") not in PROFILE_VERSIONS:
                         s["server_type"] = "3.3.5a"
+                    s.pop("rss", None)  # removed field
                 return servers, migrate_profiles(data)
             return data, dict(DEFAULT_PROFILES)
         except Exception:
@@ -405,6 +406,15 @@ class App(tk.Tk):
             return
         if self.cache_var.get():
             clear_cache(wow_exe)
+        xp = (s.get("extra_path") or "").strip()
+        if xp:
+            try:
+                if Path(xp).suffix.lower() == ".exe" and not wplat.IS_WINDOWS:
+                    wplat.launch_detached(wplat.build_argv(xp, wplat.default_launcher(), ""), Path(xp).parent)
+                else:
+                    wplat.launch_detached([xp], Path(xp).parent)
+            except Exception:
+                pass
         try:
             argv = wplat.build_argv(wow_exe, wplat.default_launcher(), "")
             wplat.launch_detached(argv, Path(wow_exe).parent)

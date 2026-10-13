@@ -1,6 +1,11 @@
-# WoW Realmlist Manager — v4.5.1
+# WoW Realmlist Manager — v4.5.2
 
 A cross-platform clone of the classic **"Realmlist modifier"** tool for World of Warcraft private servers. Switch `realmlist.wtf` between servers, check status, manage AddOns, and launch the client — without hand-editing config files.
+
+## What's new in 4.5.2
+
+- **Per-server extra program:** each server can now name a helper to start *before* WoW (Additional settings → "Launch before WoW", e.g. a controller mapper like WoWPadX). It launches first, then the global extra program from Settings (if any), then WoW. Helpers ending in `.exe` run through the same launcher/`WINEPREFIX` as WoW on Linux/macOS; native helpers start directly. The global "skip if already running" option applies to both.
+- **Removed the dead Server RSS field:** it never did anything, so it's gone from the dialog, the config (cleaned on load) and the docs.
 
 ## What's new in 4.5.1
 
@@ -49,7 +54,7 @@ What you're looking at, top to bottom:
 | Server list (gold box) | Your servers. The colored dot is the status: 🟢 online, 🔴 offline, ⚪ unknown/checking. Click to select, double-click (or ▶ Play) to launch. Drag rows to reorder. Hover a row for its profile version + exe path. |
 | `Status: Online / Ping: 107ms` + `⟳` / `ⓘ` | Result of the last TCP status check. `⟳` re-checks all servers, `ⓘ` shows the selected server's info (type, profile, exe, launch command, realmlist files, site, notes). |
 | `▶ Play` + `+ – ✓` | `▶ Play` writes the realmlist and launches WoW. If the server's version has no `WoW.exe` set, Play offers to pick it now and saves it. `+` adds, `–` removes, `✓` edits a server. |
-| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Windowed`, `Uses preloader`, `Automatic cache clearing`, `Account`) | Shows the selected server's resolved config. `WoW client` shows the profile version, or `(not set)` / `(missing!)` when the path needs attention. |
+| Details grid (`Server address`, `Realmlist`, `Patchlist`, `WoW client`, `Launcher`, `Windowed`, `Uses preloader`, `Automatic cache clearing`, `Extra program`, `Account`) | Shows the selected server's resolved config. `WoW client` shows the profile version, or `(not set)` / `(missing!)` when the path needs attention. |
 | `Launched by manager` + `Kill` / `Force kill` | PIDs this app launched (detached, so they survive manager exit). `Kill` = graceful terminate, `Force kill` = force. Dead PIDs are pruned automatically every 2 s. |
 
 ## Features
@@ -59,7 +64,7 @@ What you're looking at, top to bottom:
 - 3 fixed profiles: one `WoW.exe` per version (`1.12.1` / `2.4.3` / `3.3.5a`) in Settings; each server picks a version, Play uses that profile's exe.
 - Per-profile realmlist lookup: `Locate realmlist` in Settings shows exactly which `realmlist.wtf` file(s) Play will update
 - Windowed-mode startup per server (`windowed`) with a global `default_windowed` fallback — writes `SET gxWindow "1"` on Play, never forces fullscreen
-- Add / edit / remove servers: Basic tab (name, address, account, client version) + Additional tab (own patchlist, preloader, auto cache clear, windowed mode, RSS, site, info)
+- Add / edit / remove servers: Basic tab (name, address, account, client version) + Additional tab (own patchlist, preloader, pre-launch program, auto cache clear, windowed mode, site, info)
 - Global Settings: 3 WoW profiles (one `WoW.exe` per version), launcher (wine on Linux/macOS, direct start on Windows) / `WINEPREFIX` (greyed out on Windows) / args, run-an-extra-program with WoW, connection timeout
 - AddOns manager: enable/disable (`.disabled` rename), delete, install from `.zip` (zip-slip protected), open folder
 - Instance tracker: detached launches (survive manager exit), liveness via `poll()`/`/proc`, Kill / Force kill buttons (`taskkill` on Windows)
@@ -174,7 +179,8 @@ cp servers.example.json servers.json
 | `server_type` | One of `1.12.1`, `2.4.3`, `3.3.5a` — picks which of the 3 profiles Play uses. |
 | `windowed` | Start this server in windowed mode (`SET gxWindow "1"` on Play). |
 | `auto_clear` | Clear `WDB` on every Play for this server. |
-| `rss` / `site` / `info` | Shown in the ⓘ info dialog; `site` has a Visit button. |
+| `extra_path` | Program started before WoW for this server only (e.g. controller mapper); global skip-if-running applies. |
+| `site` / `info` | Shown in the ⓘ info dialog; `site` has a Visit button. |
 
 | Setting | Meaning |
 |---|---|
